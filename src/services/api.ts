@@ -447,6 +447,595 @@ export async function getListings() {
   }
 }
 
+export async function getListing(listingId: number) {
+  try {
+    const response = await apiRequest<{ listing: Listing }>(`/listings/${listingId}`);
+    return response.listing;
+  } catch {
+    const fallback = fallbackListings.find((l) => l.id === listingId) ?? null;
+    return fallback;
+  }
+}
+
+export async function createListing(payload: Partial<Listing> & { id: number }) {
+  try {
+    const response = await apiRequest<{ listing: Listing }>("/listings", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.listing;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function updateListing(listingId: number, updates: Partial<Listing>) {
+  try {
+    const response = await apiRequest<{ listing: Listing }>(`/listings/${listingId}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+    return response.listing;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function deleteListing(listingId: number) {
+  try {
+    const response = await apiRequest<{ ok: boolean }>(`/listings/${listingId}`, { method: "DELETE" });
+    return response.ok;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export type Order = {
+  id: string;
+  listingId: number;
+  listingSnapshot: { id: number; name: string; provider: string; price: string };
+  buyerId: string;
+  providerId?: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentRef?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export async function createOrder(payload: { listingId: number; amount: number; currency?: string; metadata?: Record<string, unknown> }) {
+  try {
+    const response = await apiRequest<{ order: Order }>("/orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.order;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getOrders() {
+  try {
+    const response = await apiRequest<{ orders: { buyer: Order[]; provider: Order[] } }>("/orders");
+    return response.orders;
+  } catch (error) {
+    return { buyer: [], provider: [] };
+  }
+}
+
+// ===== TIER 2: PROVIDER PROFILES & VERIFICATION =====
+
+export type ProviderProfile = {
+  _id?: string;
+  userId: string;
+  displayName: string;
+  bio: string;
+  contact: string;
+  skills: string[];
+  portfolioLinks: string[];
+  verified: boolean;
+  verificationStatus: "unverified" | "pending" | "approved" | "rejected";
+  avatar?: string | null;
+  website?: string | null;
+  rating: number;
+  reviewCount: number;
+};
+
+export type VerificationRequest = {
+  _id?: string;
+  providerId: string;
+  documents: string[];
+  note?: string | null;
+  status: "pending" | "approved" | "rejected";
+  adminNote?: string | null;
+  adminId?: string | null;
+  reviewedAt?: string | null;
+  createdAt?: string;
+};
+
+export type Review = {
+  _id?: string;
+  listingId: number;
+  authorId: string;
+  authorName: string;
+  rating: number;
+  title: string;
+  body: string;
+  createdAt?: string;
+};
+
+export async function updateProviderProfile(payload: Partial<ProviderProfile>) {
+  try {
+    const response = await apiRequest<{ profile: ProviderProfile }>("/providers/profile", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.profile;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getProviderProfile(userId: string) {
+  try {
+    const response = await apiRequest<{ profile: ProviderProfile; listings: Listing[] }>(`/providers/${userId}`);
+    return response;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function submitVerificationRequest(payload: { documents: string[]; note?: string }) {
+  try {
+    const response = await apiRequest<{ request: VerificationRequest }>("/verification/request", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.request;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getVerificationRequests() {
+  try {
+    const response = await apiRequest<{ requests: VerificationRequest[] }>("/verification/requests");
+    return response.requests;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function reviewVerificationRequest(requestId: string, status: string, adminNote: string) {
+  try {
+    const response = await apiRequest<{ request: VerificationRequest }>(`/verification/requests/${requestId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status, adminNote }),
+    });
+    return response.request;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ===== TIER 2: REVIEWS & NOTIFICATIONS =====
+
+export async function createReview(listingId: number, payload: { rating: number; title: string; body: string; orderId?: string }) {
+  try {
+    const response = await apiRequest<{ review: Review }>(`/listings/${listingId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.review;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getListingReviews(listingId: number, page = 1, limit = 10) {
+  try {
+    const response = await apiRequest<{ reviews: Review[]; pagination: { page: number; limit: number; total: number } }>(
+      `/listings/${listingId}/reviews?page=${page}&limit=${limit}`
+    );
+    return response;
+  } catch (error) {
+    return { reviews: [], pagination: { page, limit, total: 0 } };
+  }
+}
+
+export async function getNotifications() {
+  try {
+    const response = await apiRequest<{ notifications: any[]; unreadCount: number }>("/notifications");
+    return response;
+  } catch (error) {
+    return { notifications: [], unreadCount: 0 };
+  }
+}
+
+export async function markNotificationAsRead(notificationId: string) {
+  try {
+    const response = await apiRequest<{ notification: any }>(`/notifications/${notificationId}/read`, { method: "PUT" });
+    return response.notification;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function uploadFile(payload: { filename: string; fileType?: string; s3Url: string }) {
+  try {
+    const response = await apiRequest<{ upload: any }>("/upload", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response.upload;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getFlaggedReviews() {
+  try {
+    const response = await apiRequest<{ reviews: Review[] }>("/reviews/flagged");
+    return response.reviews;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function moderateReview(reviewId: string, moderated: boolean, flagged: boolean) {
+  try {
+    const response = await apiRequest<{ review: Review }>(`/reviews/${reviewId}/moderate`, {
+      method: "PUT",
+      body: JSON.stringify({ moderated, flagged }),
+    });
+    return response.review;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ===== TIER 3: ESCROW & DISPUTES =====
+
+export type Escrow = {
+  _id?: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  releasedAt?: string | null;
+  releaseReason?: string | null;
+  createdAt?: string;
+};
+
+export type Dispute = {
+  _id?: string;
+  orderId: string;
+  escrowId?: string | null;
+  initiatedBy: string;
+  reason: string;
+  description: string;
+  status: string;
+  resolution?: string | null;
+  adminId?: string | null;
+  resolvedAt?: string | null;
+  createdAt?: string;
+};
+
+export async function holdEscrow(orderId: string) {
+  try {
+    const response = await apiRequest<{ escrow: Escrow }>(`/orders/${orderId}/escrow`, { method: "POST" });
+    return response.escrow;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function releaseEscrow(escrowId: string, reason = "Order completed") {
+  try {
+    const response = await apiRequest<{ escrow: Escrow }>(`/escrow/${escrowId}/release`, {
+      method: "PUT",
+      body: JSON.stringify({ reason }),
+    });
+    return response.escrow;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function openDispute(orderId: string, payload: { reason: string; description: string }) {
+  try {
+    const response = await apiRequest<{ dispute: Dispute }>("/disputes", {
+      method: "POST",
+      body: JSON.stringify({ orderId, ...payload }),
+    });
+    return response.dispute;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getDisputes() {
+  try {
+    const response = await apiRequest<{ disputes: Dispute[] }>("/disputes");
+    return response.disputes;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function resolveDispute(disputeId: string, resolution: string, status: string) {
+  try {
+    const response = await apiRequest<{ dispute: Dispute }>(`/disputes/${disputeId}/resolve`, {
+      method: "PUT",
+      body: JSON.stringify({ resolution, status }),
+    });
+    return response.dispute;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ===== TIER 3: SEARCH & ANALYTICS =====
+
+export async function searchListings(query: { q?: string; category?: string; minPrice?: number; maxPrice?: number; verified?: boolean; sort?: string }) {
+  try {
+    const params = new URLSearchParams();
+    if (query.q) params.set("q", String(query.q));
+    if (query.category) params.set("category", String(query.category));
+    if (query.minPrice) params.set("minPrice", String(query.minPrice));
+    if (query.maxPrice) params.set("maxPrice", String(query.maxPrice));
+    if (query.verified) params.set("verified", String(query.verified));
+    if (query.sort) params.set("sort", String(query.sort));
+
+    const response = await apiRequest<{ listings: Listing[] }>(`/listings/search?${params}`);
+    return response.listings;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function getMarketplaceAnalytics() {
+  try {
+    const response = await apiRequest<{
+      totalOrders: number;
+      totalRevenue: number;
+      avgOrderValue: number;
+      ordersByStatus: any[];
+      topListings: any[];
+      topProviders: any[];
+    }>("/marketplace/analytics");
+    return response;
+  } catch (error) {
+    return {
+      totalOrders: 0,
+      totalRevenue: 0,
+      avgOrderValue: 0,
+      ordersByStatus: [],
+      topListings: [],
+      topProviders: [],
+    };
+  }
+}
+
+// ===== TIER 3: MONETIZATION =====
+
+export type Commission = {
+  _id?: string;
+  orderId: string;
+  providerId: string;
+  buyerId: string;
+  grossAmount: number;
+  commissionRate: number;
+  commissionAmount: number;
+  netAmount: number;
+  currency: string;
+  status: string;
+  createdAt?: string;
+};
+
+export type Payout = {
+  _id?: string;
+  providerId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentMethod: string;
+  transactionId?: string | null;
+  commissionIds: string[];
+  completedAt?: string | null;
+  createdAt?: string;
+};
+
+export type Invoice = {
+  _id?: string;
+  invoiceNumber: string;
+  providerId: string;
+  totalAmount: number;
+  currency: string;
+  taxAmount: number;
+  taxRate: number;
+  netAmount: number;
+  status: string;
+  issueDate: string;
+  dueDate?: string | null;
+  paidDate?: string | null;
+  lineItems: any[];
+  createdAt?: string;
+};
+
+export async function calculateCommission(orderId: string, commissionRate: number = 0.1) {
+  try {
+    const response = await apiRequest<{ commission: Commission }>(`/orders/${orderId}/calculate-commission`, {
+      method: "POST",
+      body: JSON.stringify({ commissionRate }),
+    });
+    return response.commission;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getCommissions(page = 1, limit = 20) {
+  try {
+    const response = await apiRequest<{ commissions: Commission[]; pagination: any }>(
+      `/commissions?page=${page}&limit=${limit}`
+    );
+    return response;
+  } catch (error) {
+    return { commissions: [], pagination: { page, limit, total: 0, pages: 0 } };
+  }
+}
+
+export async function getProviderCommissionHistory(userId: string) {
+  try {
+    const response = await apiRequest<{ commissions: Commission[]; totalEarned: number }>(
+      `/providers/${userId}/commission-history`
+    );
+    return response;
+  } catch (error) {
+    return { commissions: [], totalEarned: 0 };
+  }
+}
+
+export async function createPayout(providerId: string, commissionIds: string[], paymentMethod = "bank_transfer") {
+  try {
+    const response = await apiRequest<{ payout: Payout }>("/payouts", {
+      method: "POST",
+      body: JSON.stringify({ providerId, commissionIds, paymentMethod }),
+    });
+    return response.payout;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getPayouts(status?: string) {
+  try {
+    const query = status ? `?status=${status}` : "";
+    const response = await apiRequest<{ payouts: Payout[] }>(`/payouts${query}`);
+    return response.payouts;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function processPayout(payoutId: string, status: "processing" | "completed" | "failed", reason?: string) {
+  try {
+    const response = await apiRequest<{ payout: Payout }>(`/payouts/${payoutId}/process`, {
+      method: "PUT",
+      body: JSON.stringify({ status, reason }),
+    });
+    return response.payout;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function createInvoice(
+  providerId: string,
+  lineItems: any[],
+  taxRate = 0,
+  notes = ""
+) {
+  try {
+    const response = await apiRequest<{ invoice: Invoice }>("/invoices", {
+      method: "POST",
+      body: JSON.stringify({ providerId, lineItems, taxRate, notes }),
+    });
+    return response.invoice;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getInvoices() {
+  try {
+    const response = await apiRequest<{ invoices: Invoice[] }>("/invoices");
+    return response.invoices;
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function issueInvoice(invoiceId: string) {
+  try {
+    const response = await apiRequest<{ invoice: Invoice }>(`/invoices/${invoiceId}/issue`, {
+      method: "PUT",
+    });
+    return response.invoice;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ===== TIER 3: FRAUD DETECTION =====
+
+export type FraudAssessment = {
+  fraudScore: number;
+  flags: string[];
+  riskLevel: "low" | "medium" | "high" | "critical";
+};
+
+export async function checkOrderFraud(orderId: string): Promise<FraudAssessment> {
+  try {
+    const response = await apiRequest<FraudAssessment>("/fraud-detection/check-order", {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    });
+    return response;
+  } catch (error) {
+    return { fraudScore: 0, flags: [], riskLevel: "low" };
+  }
+}
+
+export async function getUserFraudScore(userId: string) {
+  try {
+    const response = await apiRequest<any>(`/fraud-detection/users/${userId}`);
+    return response;
+  } catch (error) {
+    return { fraudScore: 0, flags: [] };
+  }
+}
+
+export async function reviewUserFraudScore(userId: string, score: number, riskLevel: string, notes: string) {
+  try {
+    const response = await apiRequest<any>(`/fraud-detection/users/${userId}/review`, {
+      method: "PUT",
+      body: JSON.stringify({ score, riskLevel, notes }),
+    });
+    return response;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// ===== TIER 3: OBSERVABILITY =====
+
+export async function getAuditLogs(page = 1, limit = 20, action?: string) {
+  try {
+    let query = `?page=${page}&limit=${limit}`;
+    if (action) query += `&action=${encodeURIComponent(action)}`;
+    const response = await apiRequest<{ logs: any[]; pagination: any }>(`/audit-logs${query}`);
+    return response;
+  } catch (error) {
+    return { logs: [], pagination: { page, limit, total: 0, pages: 0 } };
+  }
+}
+
+export async function getMarketplaceMetrics() {
+  try {
+    const response = await apiRequest<{
+      orders: any;
+      disputes: any;
+      fraud: any;
+    }>("/metrics/marketplace");
+    return response;
+  } catch (error) {
+    return { orders: {}, disputes: {}, fraud: {} };
+  }
+}
+
 export async function getMediaChannels() {
   try {
     const response = await apiRequest<{ channels: MediaChannel[] }>("/media/channels");
@@ -1029,26 +1618,6 @@ export async function getInstructorSessions() {
     return response.sessions;
   } catch {
     return [];
-  }
-}
-
-// ===== TIER 2: NOTIFICATIONS =====
-
-export async function getNotifications() {
-  try {
-    const response = await apiRequest<{ notifications: Notification[]; unreadCount: number }>("/notifications");
-    return response;
-  } catch {
-    return { notifications: [], unreadCount: 0 };
-  }
-}
-
-export async function markNotificationAsRead(notificationId: string) {
-  try {
-    const response = await apiRequest<{ notification: Notification }>(`/notifications/${notificationId}`, { method: "PUT" });
-    return response.notification;
-  } catch {
-    return null;
   }
 }
 

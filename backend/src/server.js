@@ -9,7 +9,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient as createRedisClient } from "redis";
 import { config } from "./config.js";
 import { sendEmail } from "./shared/mailer.js";
-import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, User, SiteConfig } from "./models.js";
+import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, User, SiteConfig, Order, ProviderProfile, VerificationRequest, Review, FileUpload, Escrow, Dispute, Commission, Payout, Invoice, AuditLog, RateLimit, FraudScore } from "./models.js";
 import { seedDatabase } from "./seed.js";
 import configRoutes from "./domains/admin/config-routes.js";
 
@@ -126,6 +126,110 @@ const requireAdmin = (req, res, next) => {
   }
 
   return next();
+};
+
+// ============ TIER 3: UTILITY FUNCTIONS ============
+
+const auditLog = async (action, entity, entityId, userId = null, changes = {}, success = true, errorMessage = null, ipAddress = null) => {
+  try {
+    await AuditLog.create({
+      action,
+      entity,
+      entityId,
+      userId,
+      changes,
+      success,
+      errorMessage,
+      ipAddress,
+      userAgent: null,
+    });
+  } catch (err) {
+    console.error("Audit log failed:", err.message);
+  }
+};
+
+const calculateFraudScore = async (userId, order) => {
+  const flags = [];
+  let score = 0;
+
+  // High velocity orders
+  const recentOrders = await Order.countDocuments({
+    buyerId: userId,
+    createdAt: { $gte: new Date(Date.now() - 3600000) },
+  });
+  if (recentOrders > 5) {
+    flags.push("high_velocity");
+    score += 15;
+  }
+
+  // Chargeback history
+  const chargebacks = await Order.countDocuments({
+    buyerId: userId,
+    status: "refunded",
+  });
+  if (chargebacks > 3) {
+    flags.push("high_chargebacks");
+    score += 20;
+  }
+
+  // Unusual amount
+  if (order.amount > 50000) {
+    flags.push("unusual_amount");
+    score += 10;
+  }
+
+  // First time buyer
+  const buyerHistory = await Order.countDocuments({
+    buyerId: userId,
+    status: { $in: ["completed", "paid", "processing"] },
+  });
+  if (buyerHistory === 0) {
+    flags.push("first_time_buyer");
+    score += 5;
+  }
+
+  return { score: Math.min(100, score), flags };
+};
+
+const rateLimitMiddleware = (limit = 100, windowMs = 60000) => {
+  return async (req, res, next) => {
+    const identifier = req.user?._id?.toString() || req.ip;
+    const key = `${req.path}:${identifier}`;
+    const now = Date.now();
+    const windowStart = now - windowMs;
+
+    let rateLimitDoc = await RateLimit.findOne({ key });
+
+    if (!rateLimitDoc) {
+      rateLimitDoc = await RateLimit.create({
+        key,
+        identifier,
+        count: 1,
+        limit,
+        windowStart: new Date(now),
+        windowMs,
+      });
+      return next();
+    }
+
+    if (rateLimitDoc.windowStart < new Date(windowStart)) {
+      rateLimitDoc.count = 1;
+      rateLimitDoc.windowStart = new Date(now);
+      rateLimitDoc.blocked = false;
+      await rateLimitDoc.save();
+      return next();
+    }
+
+    if (rateLimitDoc.count >= limit) {
+      rateLimitDoc.blocked = true;
+      await rateLimitDoc.save();
+      return res.status(429).json({ message: "Rate limit exceeded. Try again later." });
+    }
+
+    rateLimitDoc.count += 1;
+    await rateLimitDoc.save();
+    return next();
+  };
 };
 
 const serializeEnrollment = (enrollment, user, course) => ({
@@ -321,10 +425,908 @@ app.get("/api/courses/:id", async (req, res) => {
   return res.json({ course });
 });
 
-app.get("/api/listings", async (_req, res) => {
-  const items = await Listing.find().sort({ id: 1 }).lean();
-  return res.json({ listings: items });
+app.get("/api/listings", async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  const skip = (page - 1) * limit;
+  const search = String(req.query.search || "").trim();
+
+  let query = { status: "published" };
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { shortDesc: { $regex: search, $options: "i" } },
+      { tags: { $in: [new RegExp(search, "i")] } },
+    ];
+  }
+
+  const items = await Listing.find(query).sort({ id: 1 }).skip(skip).limit(limit).lean();
+  const total = await Listing.countDocuments(query);
+  return res.json({ listings: items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
+
+app.get("/api/listings/:id", async (req, res) => {
+  const listingId = Number(req.params.id);
+  if (Number.isNaN(listingId)) return res.status(400).json({ message: "Invalid listing id" });
+
+  const listing = await Listing.findOne({ id: listingId }).lean();
+  if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+  await Action.create({ kind: "marketplace.view", payload: { listingId } });
+  return res.json({ listing });
+});
+
+app.post("/api/listings", authenticate, async (req, res) => {
+  const { id, name, type, price, shortDesc, description, images = [], tags = [], categories = [] } = req.body ?? {};
+
+  // Validation
+  if (!id || !name || !type || !price) {
+    return res.status(400).json({ message: "id, name, type and price are required" });
+  }
+  if (String(name).length < 3) return res.status(400).json({ message: "Listing name must be at least 3 characters" });
+  if (!["Service", "Product"].includes(String(type))) return res.status(400).json({ message: "type must be Service or Product" });
+  if (isNaN(Number(price)) || Number(price) < 0) return res.status(400).json({ message: "price must be a positive number" });
+
+  const existing = await Listing.findOne({ id });
+  if (existing) return res.status(409).json({ message: "Listing ID already exists" });
+
+  const listing = await Listing.create({
+    id: Number(id),
+    name: String(name).trim(),
+    type: String(type),
+    provider: req.user.name,
+    providerId: req.user._id,
+    price: String(price),
+    shortDesc: String(shortDesc ?? "").trim(),
+    description: String(description ?? "").trim(),
+    images: Array.isArray(images) ? images : [],
+    tags: Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(t => t) : [],
+    categories: Array.isArray(categories) ? categories.map(c => String(c).trim()).filter(c => c) : [],
+    status: "published",
+  });
+
+  await Action.create({ kind: "marketplace.create", payload: { listingId: listing.id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ listing });
+});
+
+app.put("/api/listings/:id", authenticate, async (req, res) => {
+  const listingId = Number(req.params.id);
+  if (Number.isNaN(listingId)) return res.status(400).json({ message: "Invalid listing id" });
+
+  const listing = await Listing.findOne({ id: listingId });
+  if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+  if (!listing.providerId || listing.providerId.toString() !== req.user._id.toString()) {
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized to modify this listing" });
+  }
+
+  const updates = req.body ?? {};
+  Object.keys(updates).forEach((k) => {
+    if (["name", "type", "price", "shortDesc", "description", "images", "tags", "categories", "status"].includes(k)) {
+      listing[k] = updates[k];
+    }
+  });
+
+  await listing.save();
+  await Action.create({ kind: "marketplace.update", payload: { listingId }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ listing: listing.toObject() });
+});
+
+app.delete("/api/listings/:id", authenticate, async (req, res) => {
+  const listingId = Number(req.params.id);
+  if (Number.isNaN(listingId)) return res.status(400).json({ message: "Invalid listing id" });
+
+  const listing = await Listing.findOne({ id: listingId });
+  if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+  if (!listing.providerId || listing.providerId.toString() !== req.user._id.toString()) {
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized to delete this listing" });
+  }
+
+  listing.status = "archived";
+  await listing.save();
+  await Action.create({ kind: "marketplace.delete", payload: { listingId }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ ok: true });
+});
+
+// Orders (Tier1 skeleton)
+app.post("/api/orders", authenticate, async (req, res) => {
+  const { listingId, amount, currency = "USD", metadata = {} } = req.body ?? {};
+  
+  // Validation
+  if (!listingId || amount === undefined) return res.status(400).json({ message: "listingId and amount are required" });
+  if (isNaN(Number(listingId))) return res.status(400).json({ message: "listingId must be a number" });
+  if (isNaN(Number(amount)) || Number(amount) < 0) return res.status(400).json({ message: "amount must be a positive number" });
+
+  const listing = await Listing.findOne({ id: Number(listingId) }).lean();
+  if (!listing) return res.status(404).json({ message: "Listing not found" });
+  if (listing.status !== "published") return res.status(400).json({ message: "Listing is not available for ordering" });
+
+  const order = await Order.create({
+    listingId: Number(listingId),
+    listingSnapshot: { id: listing.id, name: listing.name, provider: listing.provider, price: listing.price },
+    buyerId: req.user._id,
+    providerId: listing.providerId ?? null,
+    amount: Number(amount),
+    currency: String(currency),
+    metadata: typeof metadata === "object" ? metadata : {},
+    status: "initiated",
+  });
+
+  await Action.create({ kind: "marketplace.order", payload: { orderId: order._id.toString(), listingId }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ order: order.toObject() });
+});
+
+app.get("/api/orders", authenticate, async (req, res) => {
+  const asBuyer = await Order.find({ buyerId: req.user._id }).sort({ createdAt: -1 }).lean();
+  const asProvider = await Order.find({ providerId: req.user._id }).sort({ createdAt: -1 }).lean();
+  return res.json({ orders: { buyer: asBuyer, provider: asProvider } });
+});
+
+app.get("/api/orders/:id", authenticate, async (req, res) => {
+  const order = await Order.findById(req.params.id).lean();
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.buyerId?.toString() !== req.user._id.toString() && order.providerId?.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Not authorized" });
+  }
+  return res.json({ order });
+});
+
+app.put("/api/orders/:id/status", authenticate, async (req, res) => {
+  const { status } = req.body ?? {};
+  const validStatuses = ["initiated", "paid", "processing", "completed", "cancelled", "refunded"];
+  if (!status || !validStatuses.includes(String(status))) {
+    return res.status(400).json({ message: `status must be one of: ${validStatuses.join(", ")}` });
+  }
+
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.providerId?.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only provider or admin can update order status" });
+  }
+
+  order.status = String(status);
+  await order.save();
+  await Action.create({ kind: "marketplace.order.status", payload: { orderId: order._id.toString(), status }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ order: order.toObject() });
+});
+
+// ============ TIER 2: PROVIDER PROFILES & VERIFICATION ============
+
+app.post("/api/providers/profile", authenticate, async (req, res) => {
+  const { displayName, bio, contact, skills = [], portfolioLinks = [], website } = req.body ?? {};
+
+  let profile = await ProviderProfile.findOne({ userId: req.user._id });
+  if (!profile) {
+    profile = await ProviderProfile.create({
+      userId: req.user._id,
+      displayName: String(displayName || req.user.name),
+      bio: String(bio || ""),
+      contact: String(contact || ""),
+      skills,
+      portfolioLinks,
+      website: String(website || ""),
+    });
+  } else {
+    profile.displayName = String(displayName || profile.displayName);
+    profile.bio = String(bio || profile.bio);
+    profile.contact = String(contact || profile.contact);
+    profile.skills = Array.isArray(skills) ? skills : profile.skills;
+    profile.portfolioLinks = Array.isArray(portfolioLinks) ? portfolioLinks : profile.portfolioLinks;
+    profile.website = String(website || profile.website);
+    await profile.save();
+  }
+
+  await Action.create({ kind: "marketplace.provider.profile", payload: { profileId: profile._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ profile: profile.toObject() });
+});
+
+app.get("/api/providers/:userId", async (req, res) => {
+  const profile = await ProviderProfile.findOne({ userId: req.params.userId }).lean();
+  if (!profile) return res.status(404).json({ message: "Provider not found" });
+  const listings = await Listing.find({ providerId: req.params.userId, status: "published" }).lean();
+  return res.json({ profile, listings });
+});
+
+app.post("/api/verification/request", authenticate, async (req, res) => {
+  const { note, documents = [] } = req.body ?? {};
+
+  const existing = await VerificationRequest.findOne({ providerId: req.user._id, status: "pending" });
+  if (existing) return res.status(409).json({ message: "You already have a pending verification request" });
+
+  const request = await VerificationRequest.create({
+    providerId: req.user._id,
+    documents: Array.isArray(documents) ? documents.filter(d => typeof d === "string") : [],
+    note: String(note || ""),
+    status: "pending",
+  });
+
+  await Action.create({ kind: "marketplace.verification.request", payload: { requestId: request._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ request: request.toObject() });
+});
+
+app.get("/api/verification/requests", authenticate, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ message: "Admin only" });
+
+  const requests = await VerificationRequest.find()
+    .populate("providerId", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return res.json({ requests });
+});
+
+app.put("/api/verification/requests/:id", authenticate, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ message: "Admin only" });
+
+  const { status, adminNote } = req.body ?? {};
+  if (!["pending", "approved", "rejected"].includes(String(status))) {
+    return res.status(400).json({ message: "Invalid status" });
+  }
+
+  const request = await VerificationRequest.findById(req.params.id);
+  if (!request) return res.status(404).json({ message: "Request not found" });
+
+  request.status = String(status);
+  request.adminNote = String(adminNote || "");
+  request.adminId = req.user._id;
+  request.reviewedAt = new Date();
+  await request.save();
+
+  if (String(status) === "approved") {
+    await ProviderProfile.updateOne(
+      { userId: request.providerId },
+      { verified: true, verificationStatus: "approved" },
+      { upsert: true }
+    );
+  } else if (String(status) === "rejected") {
+    await ProviderProfile.updateOne(
+      { userId: request.providerId },
+      { verified: false, verificationStatus: "rejected" },
+      { upsert: true }
+    );
+  }
+
+  await Action.create({ kind: "marketplace.verification.review", payload: { requestId: request._id, status }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ request: request.toObject() });
+});
+
+app.get("/api/marketplace/stats", authenticate, requireAdmin, async (_req, res) => {
+  const stats = {
+    totalListings: await Listing.countDocuments(),
+    publishedListings: await Listing.countDocuments({ status: "published" }),
+    totalOrders: await Order.countDocuments(),
+    totalProviders: await ProviderProfile.countDocuments(),
+    verifiedProviders: await ProviderProfile.countDocuments({ verified: true }),
+    pendingVerifications: await VerificationRequest.countDocuments({ status: "pending" }),
+  };
+  return res.json(stats);
+});
+
+// ============ TIER 2: REVIEWS & NOTIFICATIONS ============
+
+app.post("/api/listings/:listingId/reviews", authenticate, async (req, res) => {
+  const listingId = Number(req.params.listingId);
+  const { rating, title, body, orderId } = req.body ?? {};
+
+  if (!rating || !title || !body) return res.status(400).json({ message: "rating, title, body are required" });
+  if (Number.isNaN(rating) || rating < 1 || rating > 5) return res.status(400).json({ message: "rating must be 1-5" });
+  if (String(title).length < 3) return res.status(400).json({ message: "title must be at least 3 characters" });
+
+  const listing = await Listing.findOne({ id: listingId }).lean();
+  if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+  const review = await Review.create({
+    listingId,
+    orderId: orderId ? mongoose.Types.ObjectId(orderId) : null,
+    authorId: req.user._id,
+    authorName: req.user.name,
+    rating: Number(rating),
+    title: String(title),
+    body: String(body),
+  });
+
+  const avgRating = await Review.aggregate([
+    { $match: { listingId } },
+    { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } },
+  ]);
+
+  if (listing.providerId) {
+    await ProviderProfile.updateOne(
+      { userId: listing.providerId },
+      { rating: avgRating[0]?.avg || 0, reviewCount: avgRating[0]?.count || 0 }
+    );
+  }
+
+  await Action.create({ kind: "marketplace.review", payload: { reviewId: review._id, listingId }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ review: review.toObject() });
+});
+
+app.get("/api/listings/:listingId/reviews", async (req, res) => {
+  const listingId = Number(req.params.listingId);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(50, Number(req.query.limit) || 10);
+  const skip = (page - 1) * limit;
+
+  const reviews = await Review.find({ listingId, moderated: true })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const total = await Review.countDocuments({ listingId, moderated: true });
+
+  return res.json({ reviews, pagination: { page, limit, total } });
+});
+
+app.get("/api/notifications", authenticate, async (req, res) => {
+  const notifications = await Notification.find({ userId: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  const unreadCount = await Notification.countDocuments({ userId: req.user._id, isRead: false });
+
+  return res.json({ notifications, unreadCount });
+});
+
+app.put("/api/notifications/:id/read", authenticate, async (req, res) => {
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) return res.status(404).json({ message: "Notification not found" });
+
+  notification.isRead = true;
+  notification.readAt = new Date();
+  await notification.save();
+
+  return res.json({ notification: notification.toObject() });
+});
+
+app.post("/api/upload", authenticate, async (req, res) => {
+  const { filename, fileType = "other", s3Url } = req.body ?? {};
+
+  if (!filename || !s3Url) return res.status(400).json({ message: "filename and s3Url are required" });
+
+  const upload = await FileUpload.create({
+    uploadedBy: req.user._id,
+    filename: String(filename),
+    fileType: String(fileType),
+    s3Url: String(s3Url),
+    s3Key: `uploads/${req.user._id}/${Date.now()}-${filename}`,
+  });
+
+  await Action.create({ kind: "marketplace.file.upload", payload: { uploadId: upload._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ upload: upload.toObject() });
+});
+
+app.get("/api/reviews/flagged", authenticate, requireAdmin, async (_req, res) => {
+  const flagged = await Review.find({ flagged: true })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+
+  return res.json({ reviews: flagged });
+});
+
+app.put("/api/reviews/:id/moderate", authenticate, requireAdmin, async (req, res) => {
+  const { moderated, flagged } = req.body ?? {};
+  const review = await Review.findById(req.params.id);
+  if (!review) return res.status(404).json({ message: "Review not found" });
+
+  if (moderated !== undefined) review.moderated = Boolean(moderated);
+  if (flagged !== undefined) review.flagged = Boolean(flagged);
+  await review.save();
+
+  await Action.create({ kind: "marketplace.review.moderate", payload: { reviewId: review._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ review: review.toObject() });
+});
+
+// ============ TIER 3: ESCROW & DISPUTES ============
+
+app.post("/api/orders/:id/escrow", authenticate, requireAdmin, async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const existing = await Escrow.findOne({ orderId: order._id });
+  if (existing) return res.status(409).json({ message: "Escrow already exists for this order" });
+
+  const escrow = await Escrow.create({
+    orderId: order._id,
+    amount: order.amount,
+    currency: order.currency,
+    status: "held",
+  });
+
+  order.status = "processing";
+  await order.save();
+
+  await Action.create({ kind: "marketplace.escrow.hold", payload: { escrowId: escrow._id, orderId: order._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ escrow: escrow.toObject() });
+});
+
+app.put("/api/escrow/:id/release", authenticate, requireAdmin, async (req, res) => {
+  const { reason = "Order completed" } = req.body ?? {};
+  const escrow = await Escrow.findById(req.params.id);
+  if (!escrow) return res.status(404).json({ message: "Escrow not found" });
+
+  escrow.status = "released_to_provider";
+  escrow.releasedAt = new Date();
+  escrow.releaseReason = String(reason);
+  await escrow.save();
+
+  const order = await Order.findById(escrow.orderId);
+  if (order) {
+    order.status = "completed";
+    await order.save();
+  }
+
+  await Action.create({ kind: "marketplace.escrow.release", payload: { escrowId: escrow._id }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ escrow: escrow.toObject() });
+});
+
+app.post("/api/disputes", authenticate, async (req, res) => {
+  const { orderId, reason, description } = req.body ?? {};
+
+  if (!orderId || !reason || !description) return res.status(400).json({ message: "orderId, reason, description are required" });
+
+  const order = await Order.findById(orderId);
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const isParty = order.buyerId?.toString() === req.user._id.toString() || order.providerId?.toString() === req.user._id.toString();
+  if (!isParty) return res.status(403).json({ message: "Only buyer or provider can open disputes" });
+
+  const existing = await Dispute.findOne({ orderId });
+  if (existing && existing.status !== "resolved_split") return res.status(409).json({ message: "A dispute already exists for this order" });
+
+  const escrow = await Escrow.findOne({ orderId });
+
+  const dispute = await Dispute.create({
+    orderId,
+    escrowId: escrow?._id ?? null,
+    initiatedBy: req.user._id,
+    reason: String(reason),
+    description: String(description),
+    status: "open",
+  });
+
+  if (escrow) {
+    escrow.status = "disputed";
+    await escrow.save();
+  }
+
+  await Action.create({ kind: "marketplace.dispute.open", payload: { disputeId: dispute._id, orderId }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.status(201).json({ dispute: dispute.toObject() });
+});
+
+app.get("/api/disputes", authenticate, requireAdmin, async (_req, res) => {
+  const disputes = await Dispute.find()
+    .populate("orderId")
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+
+  return res.json({ disputes });
+});
+
+app.put("/api/disputes/:id/resolve", authenticate, requireAdmin, async (req, res) => {
+  const { resolution, status } = req.body ?? {};
+
+  if (!["resolved_provider_wins", "resolved_buyer_wins", "resolved_split"].includes(String(status))) {
+    return res.status(400).json({ message: "Invalid resolution status" });
+  }
+
+  const dispute = await Dispute.findById(req.params.id);
+  if (!dispute) return res.status(404).json({ message: "Dispute not found" });
+
+  dispute.status = String(status);
+  dispute.resolution = String(resolution || "");
+  dispute.adminId = req.user._id;
+  dispute.resolvedAt = new Date();
+  await dispute.save();
+
+  const escrow = await Escrow.findById(dispute.escrowId);
+  if (escrow) {
+    if (String(status) === "resolved_buyer_wins") {
+      escrow.status = "refunded_to_buyer";
+    } else {
+      escrow.status = "released_to_provider";
+    }
+    escrow.releasedAt = new Date();
+    await escrow.save();
+  }
+
+  await Action.create({ kind: "marketplace.dispute.resolve", payload: { disputeId: dispute._id, status }, actorEmail: req.user.email, actorName: req.user.name });
+  return res.json({ dispute: dispute.toObject() });
+});
+
+// ============ TIER 3: ADVANCED SEARCH & ANALYTICS ============
+
+app.get("/api/listings/search", async (req, res) => {
+  const { q, category, minPrice, maxPrice, verified, sort = "popularity" } = req.query;
+
+  let query = { status: "published" };
+
+  if (q) {
+    query.$or = [
+      { name: { $regex: String(q), $options: "i" } },
+      { shortDesc: { $regex: String(q), $options: "i" } },
+      { description: { $regex: String(q), $options: "i" } },
+      { tags: { $in: [new RegExp(String(q), "i")] } },
+    ];
+  }
+
+  if (category) {
+    query.categories = { $in: [String(category)] };
+  }
+
+  if (minPrice || maxPrice) {
+    query.price = {};
+    if (minPrice) query.price.$gte = String(minPrice);
+    if (maxPrice) query.price.$lte = String(maxPrice);
+  }
+
+  if (verified === "true") {
+    query.verified = true;
+  }
+
+  let sortObj = { id: 1 };
+  if (sort === "price_asc") sortObj = { price: 1 };
+  else if (sort === "price_desc") sortObj = { price: -1 };
+  else if (sort === "newest") sortObj = { createdAt: -1 };
+
+  const listings = await Listing.find(query)
+    .sort(sortObj)
+    .limit(50)
+    .lean();
+
+  return res.json({ listings });
+});
+
+app.get("/api/marketplace/analytics", authenticate, requireAdmin, async (_req, res) => {
+  const totalOrders = await Order.countDocuments();
+  const totalRevenue = await Order.aggregate([{ $group: { _id: null, sum: { $sum: "$amount" } } }]);
+  const avgOrderValue = totalOrders > 0 ? (totalRevenue[0]?.sum || 0) / totalOrders : 0;
+
+  const ordersByStatus = await Order.aggregate([
+    { $group: { _id: "$status", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+  ]);
+
+  const topListings = await Review.aggregate([
+    { $group: { _id: "$listingId", avgRating: { $avg: "$rating" }, reviewCount: { $sum: 1 } } },
+    { $sort: { avgRating: -1, reviewCount: -1 } },
+    { $limit: 10 },
+  ]);
+
+  const topProviders = await Listing.aggregate([
+    { $group: { _id: "$providerId", listingCount: { $sum: 1 } } },
+    { $sort: { listingCount: -1 } },
+    { $limit: 10 },
+  ]);
+
+  return res.json({
+    totalOrders,
+    totalRevenue: totalRevenue[0]?.sum || 0,
+    avgOrderValue,
+    ordersByStatus,
+    topListings,
+    topProviders,
+  });
+});
+
+// ============ TIER 3: MONETIZATION (COMMISSIONS, PAYOUTS, INVOICES) ============
+
+app.post("/api/orders/:id/calculate-commission", authenticate, requireAdmin, async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const commissionRate = Number(req.body.commissionRate) || 0.1;
+  const commissionAmount = order.amount * commissionRate;
+  const netAmount = order.amount - commissionAmount;
+
+  const commission = await Commission.create({
+    orderId: order._id,
+    providerId: order.providerId,
+    buyerId: order.buyerId,
+    grossAmount: order.amount,
+    commissionRate,
+    commissionAmount,
+    netAmount,
+    currency: order.currency,
+  });
+
+  order.commissionId = commission._id;
+  order.commissionRate = commissionRate;
+  await order.save();
+
+  await auditLog("marketplace.commission.calculate", "Commission", commission._id, req.user._id, { orderId: order._id });
+
+  return res.status(201).json({ commission: commission.toObject() });
+});
+
+app.get("/api/commissions", authenticate, requireAdmin, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  const skip = (page - 1) * limit;
+
+  const commissions = await Commission.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const total = await Commission.countDocuments();
+
+  return res.json({ commissions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+});
+
+app.get("/api/providers/:userId/commission-history", authenticate, async (req, res) => {
+  const userId = req.params.userId;
+  const isProvider = req.user._id.toString() === userId || req.user.role === "admin";
+  if (!isProvider) return res.status(403).json({ message: "Access denied" });
+
+  const commissions = await Commission.find({ providerId: userId })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  const totalEarned = commissions.reduce((sum, c) => sum + (c.netAmount || 0), 0);
+
+  return res.json({ commissions, totalEarned });
+});
+
+app.post("/api/payouts", authenticate, requireAdmin, async (req, res) => {
+  const { providerId, commissionIds = [], paymentMethod = "bank_transfer" } = req.body ?? {};
+
+  if (!providerId || commissionIds.length === 0) {
+    return res.status(400).json({ message: "providerId and commissionIds are required" });
+  }
+
+  const commissions = await Commission.find({ _id: { $in: commissionIds } });
+  if (commissions.length === 0) return res.status(404).json({ message: "No commissions found" });
+
+  const totalAmount = commissions.reduce((sum, c) => sum + (c.netAmount || 0), 0);
+
+  const payout = await Payout.create({
+    providerId,
+    amount: totalAmount,
+    currency: commissions[0].currency || "USD",
+    paymentMethod,
+    commissionIds,
+  });
+
+  for (const commission of commissions) {
+    commission.status = "approved";
+    await commission.save();
+  }
+
+  await auditLog("marketplace.payout.create", "Payout", payout._id, req.user._id, { amount: totalAmount, providerId });
+
+  return res.status(201).json({ payout: payout.toObject() });
+});
+
+app.get("/api/payouts", authenticate, requireAdmin, async (req, res) => {
+  const status = req.query.status;
+  const query = status ? { status } : {};
+
+  const payouts = await Payout.find(query)
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+
+  return res.json({ payouts });
+});
+
+app.put("/api/payouts/:id/process", authenticate, requireAdmin, async (req, res) => {
+  const { status = "processing" } = req.body ?? {};
+
+  if (!["processing", "completed", "failed"].includes(status)) {
+    return res.status(400).json({ message: "Invalid status" });
+  }
+
+  const payout = await Payout.findById(req.params.id);
+  if (!payout) return res.status(404).json({ message: "Payout not found" });
+
+  payout.status = status;
+  if (status === "completed") payout.completedAt = new Date();
+  if (status === "failed") payout.failureReason = String(req.body.reason || "Unknown error");
+
+  await payout.save();
+
+  await auditLog("marketplace.payout.process", "Payout", payout._id, req.user._id, { status });
+
+  return res.json({ payout: payout.toObject() });
+});
+
+app.post("/api/invoices", authenticate, requireAdmin, async (req, res) => {
+  const { providerId, payoutId, lineItems = [], taxRate = 0, notes = "" } = req.body ?? {};
+
+  if (!providerId || lineItems.length === 0) {
+    return res.status(400).json({ message: "providerId and lineItems are required" });
+  }
+
+  const invoiceNumber = `INV-${Date.now()}`;
+  const totalAmount = lineItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const taxAmount = totalAmount * (taxRate / 100);
+  const netAmount = totalAmount - taxAmount;
+
+  const invoice = await Invoice.create({
+    invoiceNumber,
+    providerId,
+    payoutId,
+    totalAmount,
+    currency: "USD",
+    taxAmount,
+    taxRate,
+    netAmount,
+    lineItems,
+    notes: String(notes),
+    status: "draft",
+  });
+
+  await auditLog("marketplace.invoice.create", "Invoice", invoice._id, req.user._id, { invoiceNumber, totalAmount });
+
+  return res.status(201).json({ invoice: invoice.toObject() });
+});
+
+app.get("/api/invoices", authenticate, async (req, res) => {
+  let query = {};
+  if (req.user.role !== "admin") {
+    query = { providerId: req.user._id };
+  }
+
+  const invoices = await Invoice.find(query)
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  return res.json({ invoices });
+});
+
+app.put("/api/invoices/:id/issue", authenticate, requireAdmin, async (req, res) => {
+  const invoice = await Invoice.findById(req.params.id);
+  if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+
+  invoice.status = "issued";
+  invoice.issueDate = new Date();
+  invoice.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await invoice.save();
+
+  await auditLog("marketplace.invoice.issue", "Invoice", invoice._id, req.user._id, {});
+
+  return res.json({ invoice: invoice.toObject() });
+});
+
+// ============ TIER 3: TRUST & SAFETY (FRAUD DETECTION) ============
+
+app.post("/api/fraud-detection/check-order", authenticate, async (req, res) => {
+  const { orderId } = req.body ?? {};
+  if (!orderId) return res.status(400).json({ message: "orderId is required" });
+
+  const order = await Order.findById(orderId);
+  if (!order) return res.status(404).json({ message: "Order not found" });
+
+  const { score, flags } = await calculateFraudScore(order.buyerId, order);
+
+  let fraudRecord = await FraudScore.findOne({ userId: order.buyerId });
+  if (!fraudRecord) {
+    fraudRecord = await FraudScore.create({
+      userId: order.buyerId,
+      score,
+      riskLevel: score < 30 ? "low" : score < 60 ? "medium" : score < 85 ? "high" : "critical",
+      flags: flags.map((f) => ({ flag: f, severity: "medium" })),
+    });
+  } else {
+    fraudRecord.score = score;
+    fraudRecord.riskLevel = score < 30 ? "low" : score < 60 ? "medium" : score < 85 ? "high" : "critical";
+    fraudRecord.flags = flags.map((f) => ({ flag: f, severity: "medium", timestamp: new Date() }));
+    await fraudRecord.save();
+  }
+
+  order.fraudScore = score;
+  order.fraudFlags = flags;
+  await order.save();
+
+  return res.json({ fraudScore: score, flags, riskLevel: fraudRecord.riskLevel });
+});
+
+app.get("/api/fraud-detection/users/:userId", authenticate, requireAdmin, async (req, res) => {
+  const fraudRecord = await FraudScore.findOne({ userId: req.params.userId });
+
+  if (!fraudRecord) {
+    return res.json({ message: "No fraud record found", fraudScore: 0, flags: [] });
+  }
+
+  return res.json({ fraudRecord: fraudRecord.toObject() });
+});
+
+app.put("/api/fraud-detection/users/:userId/review", authenticate, requireAdmin, async (req, res) => {
+  const { score, riskLevel, notes } = req.body ?? {};
+
+  const fraudRecord = await FraudScore.findOne({ userId: req.params.userId });
+  if (!fraudRecord) return res.status(404).json({ message: "Fraud record not found" });
+
+  if (score !== undefined) fraudRecord.score = Math.min(100, Math.max(0, score));
+  if (riskLevel) fraudRecord.riskLevel = riskLevel;
+  if (notes) fraudRecord.reviewNotes = String(notes);
+
+  fraudRecord.lastReviewedAt = new Date();
+  await fraudRecord.save();
+
+  await auditLog("marketplace.fraud.review", "FraudScore", fraudRecord._id, req.user._id, { score, riskLevel });
+
+  return res.json({ fraudRecord: fraudRecord.toObject() });
+});
+
+// ============ TIER 3: OBSERVABILITY (AUDIT LOGS, METRICS) ============
+
+app.get("/api/audit-logs", authenticate, requireAdmin, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  const skip = (page - 1) * limit;
+  const action = req.query.action;
+
+  let query = {};
+  if (action) query.action = { $regex: action, $options: "i" };
+
+  const logs = await AuditLog.find(query)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const total = await AuditLog.countDocuments(query);
+
+  return res.json({ logs, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+});
+
+app.get("/api/metrics/marketplace", authenticate, requireAdmin, async (req, res) => {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const totalOrders = await Order.countDocuments();
+  const orderLast30Days = await Order.countDocuments({ createdAt: { $gte: thirtyDaysAgo } });
+  const completedOrders = await Order.countDocuments({ status: "completed" });
+  const chargebackRate = await Order.countDocuments({ status: "refunded" });
+
+  const totalDisputes = await Dispute.countDocuments();
+  const openDisputes = await Dispute.countDocuments({ status: "open" });
+  const avgResolutionTime = await Dispute.aggregate([
+    { $match: { resolvedAt: { $ne: null } } },
+    {
+      $project: {
+        resolutionTime: { $subtract: ["$resolvedAt", "$createdAt"] },
+      },
+    },
+    { $group: { _id: null, avgTime: { $avg: "$resolutionTime" } } },
+  ]);
+
+  const fraudFlags = await Order.countDocuments({ fraudFlags: { $exists: true, $ne: [] } });
+  const avgFraudScore = await Order.aggregate([
+    { $group: { _id: null, avgScore: { $avg: "$fraudScore" } } },
+  ]);
+
+  return res.json({
+    orders: {
+      total: totalOrders,
+      last30Days: orderLast30Days,
+      completed: completedOrders,
+      chargebacks: chargebackRate,
+    },
+    disputes: {
+      total: totalDisputes,
+      open: openDisputes,
+      avgResolutionTimeMs: avgResolutionTime[0]?.avgTime || 0,
+    },
+    fraud: {
+      flaggedOrders: fraudFlags,
+      avgScore: avgFraudScore[0]?.avgScore || 0,
+    },
+  });
+});
+
+// ============ TIER 3: RATE LIMITING ============
+
+app.use("/api/orders", rateLimitMiddleware(50, 60000));
+app.use("/api/disputes", rateLimitMiddleware(20, 60000));
 
 app.get("/api/media/channels", async (_req, res) => {
   const channels = await Channel.find().sort({ id: 1 }).lean();
@@ -1510,12 +2512,19 @@ async function start() {
     console.warn("Admin credentials are not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD in backend/.env");
   }
 
+  const isProduction = process.env.NODE_ENV === "production";
+
   try {
     await mongoose.connect(config.mongoUri, {
       serverSelectionTimeoutMS: 3000,
       connectTimeoutMS: 3000,
     });
   } catch (err) {
+    if (isProduction) {
+      console.error("Failed to connect to MongoDB in production. Check MONGODB_URI environment variable.");
+      throw err;
+    }
+
     console.warn("Failed to connect to configured MongoDB, attempting in-memory MongoDB for local development.");
     try {
       const { MongoMemoryServer } = await import('mongodb-memory-server');

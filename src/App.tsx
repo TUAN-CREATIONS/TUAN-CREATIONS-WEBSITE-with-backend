@@ -23,6 +23,18 @@ import StudyGroupBrowser from "./modules/academy/StudyGroupBrowser";
 import MentorshipFinder from "./modules/academy/MentorshipFinder";
 import AnalyticsDashboard from "./modules/academy/AnalyticsDashboard";
 import MarketplacePage from "./modules/marketplace/MarketplacePage";
+import ListingDetail from "./modules/marketplace/ListingDetail";
+import CreateListing from "./modules/marketplace/CreateListing";
+import ProviderDashboard from "./modules/marketplace/ProviderDashboard";
+import ProviderOnboarding from "./modules/marketplace/ProviderOnboarding";
+import VerificationAdmin from "./modules/marketplace/VerificationAdmin";
+import AdvancedSearch from "./modules/marketplace/AdvancedSearch";
+import MarketplaceAnalytics from "./modules/marketplace/MarketplaceAnalytics";
+import DisputeAdmin from "./modules/marketplace/DisputeAdmin";
+import CommissionAdmin from "./modules/marketplace/CommissionAdmin";
+import PayoutAdmin from "./modules/marketplace/PayoutAdmin";
+import FraudDetectionDashboard from "./modules/marketplace/FraudDetectionDashboard";
+import AuditLogsViewer from "./modules/marketplace/AuditLogsViewer";
 import MediaPage from "./modules/media/MediaPage";
 import CollaborationPage from "./modules/collaboration/CollaborationPage";
 import IotPage from "./modules/iot/IotPage";
@@ -76,6 +88,18 @@ export default function App() {
           <Route path="/admin/academy/analytics" element={<AnalyticsDashboard />} />
           <Route path="/live-session" element={<LiveSessionPage />} />
           <Route path="/marketplace" element={<MarketplacePage />} />
+          <Route path="/marketplace/search" element={<AdvancedSearch />} />
+          <Route path="/marketplace/listing/:listingId" element={<ListingDetail />} />
+          <Route path="/marketplace/create" element={<CreateListing />} />
+          <Route path="/marketplace/provider" element={<ProviderDashboard />} />
+          <Route path="/marketplace/onboarding" element={<ProviderOnboarding />} />
+          <Route path="/marketplace/verification-admin" element={<VerificationAdmin />} />
+          <Route path="/marketplace/analytics" element={<MarketplaceAnalytics />} />
+          <Route path="/marketplace/disputes" element={<DisputeAdmin />} />
+          <Route path="/marketplace/commissions" element={<CommissionAdmin />} />
+          <Route path="/marketplace/payouts" element={<PayoutAdmin />} />
+          <Route path="/marketplace/fraud-detection" element={<FraudDetectionDashboard />} />
+          <Route path="/marketplace/audit-logs" element={<AuditLogsViewer />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/collaboration" element={<CollaborationPage />} />
           <Route path="/iot" element={<IotPage />} />

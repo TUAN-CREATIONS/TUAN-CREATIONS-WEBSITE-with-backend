@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { getListings, recordAction, type Listing } from "../../services/api";
 
 export default function MarketplacePage() {
@@ -39,6 +40,43 @@ export default function MarketplacePage() {
         {message && <p className="mt-3 text-sm text-emerald-300">{message}</p>}
       </div>
 
+      {/* Navigation Links */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Link to="/marketplace/search" className="btn-ghost text-xs text-center">
+          🔍 Advanced Search
+        </Link>
+        <Link to="/marketplace/create" className="btn-ghost text-xs text-center">
+          ➕ Create Listing
+        </Link>
+        <Link to="/marketplace/provider" className="btn-ghost text-xs text-center">
+          👤 My Dashboard
+        </Link>
+        <Link to="/marketplace/analytics" className="btn-ghost text-xs text-center">
+          📊 Analytics
+        </Link>
+        <Link to="/marketplace/onboarding" className="btn-ghost text-xs text-center">
+          ✓ Become Verified
+        </Link>
+        <Link to="/marketplace/verification-admin" className="btn-ghost text-xs text-center">
+          ⚙️ Verification
+        </Link>
+        <Link to="/marketplace/disputes" className="btn-ghost text-xs text-center">
+          ⚖️ Disputes
+        </Link>
+        <Link to="/marketplace/commissions" className="btn-ghost text-xs text-center">
+          💰 Commissions
+        </Link>
+        <Link to="/marketplace/payouts" className="btn-ghost text-xs text-center">
+          💸 Payouts
+        </Link>
+        <Link to="/marketplace/fraud-detection" className="btn-ghost text-xs text-center">
+          🚨 Fraud Detection
+        </Link>
+        <Link to="/marketplace/audit-logs" className="btn-ghost text-xs text-center">
+          📋 Audit Logs
+        </Link>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {listings.map((item) => (
           <article key={item.id} className="card card-hover">
@@ -48,7 +86,11 @@ export default function MarketplacePage() {
                 {item.verified ? "Verified Provider" : "Pending Verification"}
               </span>
             </div>
-            <h3 className="mt-3 font-display text-xl">{item.name}</h3>
+            <h3 className="mt-3 font-display text-xl">
+              <Link to={`/marketplace/listing/${item.id}`} className="underline">
+                {item.name}
+              </Link>
+            </h3>
             <p className="mt-2 text-sm text-[var(--text-soft)]">{item.provider}</p>
             <p className="mt-4 text-lg text-[var(--gold)]">{item.price}</p>
             <p className="mt-1 text-xs text-[var(--text-soft)]">Verified profiles help clients transact safely</p>
