@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: tuan-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: CLIENT_ORIGIN
+        scope: all
+      - key: MONGODB_URI
+        scope: all
+      - key: JWT_SECRET
+        scope: all
+      - key: ADMIN_EMAIL
+        value: tuancreations.africa@gmail.com
+      - key: ADMIN_PASSWORD
+        scope: all
+
+  - type: static_site
+    name: tuan-frontend
+    repo: https://github.com/tuancreations/TUAN-CREATIONS-WEBSITE-with-backend
+    branch: main
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        headers:
+          - key: Cache-Control
+            value: "public, max-age=3600"
+      - path: /index.html
+        headers:
+          - key: Cache-Control
+            value: "public, max-age=0, must-revalidate"

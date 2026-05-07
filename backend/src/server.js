@@ -1510,13 +1510,53 @@ async function start() {
     console.warn("Admin credentials are not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD in backend/.env");
   }
 
+  // Check if MONGODB_URI is configured
+  if (!config.mongoUri || config.mongoUri === "mongodb://127.0.0.1:27017/tuan_creations") {
+    const isProduction = process.env.NODE_ENV === "production";
+    if (isProduction) {
+      console.error("❌ PRODUCTION DEPLOYMENT ERROR");
+      console.error("MongoDB is not configured!");
+      console.error("");
+      console.error("Required Action:");
+      console.error("1. Set MONGODB_URI environment variable");
+      console.error("2. Use MongoDB Atlas: https://cloud.mongodb.com");
+      console.error("3. Connection string format:");
+      console.error("   mongodb+srv://username:password@cluster.mongodb.net/tuan_creations");
+      console.error("");
+      console.error("For Render deployment:");
+      console.error("1. Go to your service settings");
+      console.error("2. Add environment variable: MONGODB_URI");
+      console.error("3. Redeploy the service");
+      console.error("");
+      process.exit(1);
+    }
+  }
+
   try {
+    console.log("📊 Connecting to MongoDB...");
     await mongoose.connect(config.mongoUri, {
-      serverSelectionTimeoutMS: 3000,
-      connectTimeoutMS: 3000,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
     });
+    console.log("✅ Connected to MongoDB");
   } catch (err) {
-    console.warn("Failed to connect to configured MongoDB, attempting in-memory MongoDB for local development.");
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    if (isProduction) {
+      console.error("❌ Failed to connect to MongoDB in production");
+      console.error("Error:", err.message);
+      console.error("");
+      console.error("Troubleshooting:");
+      console.error("1. Verify MONGODB_URI is correct");
+      console.error("2. Check MongoDB cluster is running");
+      console.error("3. Verify IP whitelist includes your server");
+      console.error("4. Check database credentials");
+      console.error("");
+      process.exit(1);
+    }
+
+    console.warn("⚠️  Failed to connect to configured MongoDB");
+    console.warn("Attempting in-memory MongoDB for local development...");
     try {
       const { MongoMemoryServer } = await import('mongodb-memory-server');
       const mongod = await MongoMemoryServer.create();
@@ -1525,9 +1565,9 @@ async function start() {
         serverSelectionTimeoutMS: 3000,
         connectTimeoutMS: 3000,
       });
-      console.log("Connected to in-memory MongoDB");
+      console.log("✅ Connected to in-memory MongoDB (local development only)");
     } catch (memErr) {
-      console.error("Failed to start in-memory MongoDB", memErr);
+      console.error("❌ Failed to start in-memory MongoDB", memErr);
       throw memErr;
     }
   }
@@ -1790,7 +1830,17 @@ async function start() {
   });
 
   httpServer.listen(config.port, () => {
-    console.log(`TUAN backend running on http://localhost:${config.port}`);
+    console.log("");
+    console.log("╔════════════════════════════════════════╗");
+    console.log("║  🚀 TUAN Marketplace Backend          ║");
+    console.log("║  ✅ Server Running                     ║");
+    console.log("╠════════════════════════════════════════╣");
+    console.log(`║  URL: http://localhost:${config.port}` + " ".repeat(Math.max(0, 38 - `http://localhost:${config.port}`.length)) + "║");
+    console.log(`║  Environment: ${process.env.NODE_ENV || "development"}` + " ".repeat(Math.max(0, 29 - (process.env.NODE_ENV || "development").length)) + "║");
+    console.log(`║  Port: ${config.port}` + " ".repeat(Math.max(0, 33 - `${config.port}`.length)) + "║");
+    console.log("╚════════════════════════════════════════╝");
+    console.log("");
+    console.log("Ready to accept connections!");
   });
 }
 
