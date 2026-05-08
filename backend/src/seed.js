@@ -4,7 +4,7 @@ import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThre
 import { collaborationProjects, courses, dashboardMetrics, innovationPrograms, listings, mediaChannels, recordingSeeds, sessionSeeds, instructorSeeds, forumThreadSeeds, notificationSeeds, sessionSeeds_tier2, quizSeeds, quizResultSeeds, studyGroupSeeds, mentorshipPairingSeeds } from "./data.js";
 
 const seedCollection = async (Model, documents, uniqueField) => {
-  const count = await Model.countDocuments();
+  const count = await Model.estimatedDocumentCount();
   if (count > 0) return;
 
   if (uniqueField) {
@@ -31,8 +31,8 @@ export async function seedDatabase() {
   await seedCollection(Recording, recordingSeeds);
 
   // Seed instructors
-  const existingInstructors = await User.countDocuments({ isInstructor: true });
-  if (existingInstructors === 0 && instructorSeeds.length > 0) {
+  const existingInstructor = await User.findOne({ isInstructor: true }).lean();
+  if (!existingInstructor && instructorSeeds.length > 0) {
     const hashedInstructors = await Promise.all(
       instructorSeeds.map(async (instructor) => ({
         ...instructor,
@@ -43,7 +43,7 @@ export async function seedDatabase() {
   }
 
   // Seed sessions with instructor references
-  const existingSessions = await Session.countDocuments();
+  const existingSessions = await Session.estimatedDocumentCount();
   if (existingSessions === 0 && sessionSeeds_tier2.length > 0) {
     const instructors = await User.find({ isInstructor: true });
     const instructorMap = {
@@ -61,7 +61,7 @@ export async function seedDatabase() {
   }
 
   // Seed forum threads
-  const existingThreads = await ForumThread.countDocuments();
+  const existingThreads = await ForumThread.estimatedDocumentCount();
   if (existingThreads === 0 && forumThreadSeeds.length > 0) {
     const firstInstructor = await User.findOne({ isInstructor: true });
     const threadsWithAuthor = forumThreadSeeds.map((thread) => ({
@@ -73,14 +73,14 @@ export async function seedDatabase() {
   }
 
   // Seed quizzes
-  const existingQuizzes = await Quiz.countDocuments();
+  const existingQuizzes = await Quiz.estimatedDocumentCount();
   if (existingQuizzes === 0 && quizSeeds.length > 0) {
     // Attach a generated ObjectId and insert
     await Quiz.insertMany(quizSeeds.map(q => ({ ...q })));
   }
 
   // Seed study groups
-  const existingGroups = await StudyGroup.countDocuments();
+  const existingGroups = await StudyGroup.estimatedDocumentCount();
   if (existingGroups === 0 && studyGroupSeeds.length > 0) {
     const firstInstructor = await User.findOne({ isInstructor: true });
     const groups = studyGroupSeeds.map(g => ({ ...g, createdBy: firstInstructor?._id, members: [firstInstructor?._id] }));
@@ -88,7 +88,7 @@ export async function seedDatabase() {
   }
 
   // Seed mentorship pairings
-  const existingPairings = await MentorshipPairing.countDocuments();
+  const existingPairings = await MentorshipPairing.estimatedDocumentCount();
   if (existingPairings === 0 && mentorshipPairingSeeds.length > 0) {
     const mentor = await User.findOne({ email: mentorshipPairingSeeds[0].mentorEmail });
     const mentee = await User.findOne({ isInstructor: false, role: { $ne: 'admin' } });
@@ -106,7 +106,7 @@ export async function seedDatabase() {
   }
 
   // Seed quiz results (map to the first student account)
-  const existingQuizResults = await QuizResult.countDocuments();
+  const existingQuizResults = await QuizResult.estimatedDocumentCount();
   if (existingQuizResults === 0 && quizResultSeeds.length > 0) {
     const quizzes = await Quiz.find().lean();
     const student = await User.findOne({ isInstructor: false, role: { $ne: 'admin' } });
@@ -129,7 +129,7 @@ export async function seedDatabase() {
     }
   }
 
-  const actionCount = await Action.countDocuments();
+  const actionCount = await Action.estimatedDocumentCount();
   if (actionCount === 0) {
     await Action.create({
       kind: "system.bootstrap",
@@ -156,7 +156,7 @@ export async function seedDatabase() {
   }
 
   // Seed site configuration defaults
-  const existingConfig = await SiteConfig.countDocuments();
+  const existingConfig = await SiteConfig.estimatedDocumentCount();
   if (existingConfig === 0) {
     const defaultConfigs = [
       {

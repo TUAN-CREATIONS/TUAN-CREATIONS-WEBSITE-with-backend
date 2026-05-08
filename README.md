@@ -145,6 +145,25 @@ flowchart TD
 - Shared auth logic lives in [backend/src/shared/auth.js](backend/src/shared/auth.js).
 - Frontend service layer with fallback behavior lives in [src/services/api.ts](src/services/api.ts).
 - Global site settings are stored in MongoDB through the `SiteConfig` model and exposed through admin config endpoints.
+- Railway deployment is configured from [railway.json](railway.json) to start the backend from `backend/` and expose `/api/health` for health checks.
+
+## Railway Deployment
+
+Railway is a good fit for the backend because it supports long-lived Node processes and Socket.IO.
+
+Deploy the backend as a Railway service from the repository root. Railway will use [railway.json](railway.json), run `cd backend && npm ci`, and start the server with `cd backend && npm start`.
+
+Set these environment variables in the Railway service:
+
+- `NODE_ENV=production`
+- `MONGODB_URI` or the Atlas parts supported by [backend/src/config.js](backend/src/config.js)
+- `JWT_SECRET`
+- `CLIENT_ORIGIN`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `REDIS_URL` if needed
+
+Then point the frontend at the Railway URL by setting `VITE_API_BASE_URL` to the deployed backend origin.
 
 ---
 

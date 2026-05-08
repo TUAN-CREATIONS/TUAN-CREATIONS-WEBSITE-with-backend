@@ -272,6 +272,23 @@ docker run -d -p 6379:6379 redis:7
 
 **Deployed in:** ~10-15 minutes
 
+#### Railway backend setup
+
+This repository now includes a [railway.json](railway.json) config so Railway can build and start the backend from `backend/` without extra manual wiring.
+
+Use these backend environment variables in Railway:
+
+- `NODE_ENV=production`
+- `PORT=4000` or leave Railway to manage the port and keep the default startup behavior
+- `MONGODB_URI` or the Atlas parts supported by [backend/src/config.js](backend/src/config.js)
+- `JWT_SECRET`
+- `CLIENT_ORIGIN` set to your frontend URL
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `REDIS_URL` if you want the Socket.IO Redis adapter
+
+For the frontend, set `VITE_API_BASE_URL` to the Railway backend domain so the browser app calls the deployed API instead of localhost.
+
 ---
 
 ## 🔒 Security Checklist
