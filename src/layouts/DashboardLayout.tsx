@@ -6,8 +6,8 @@ import useColorMode from "../hooks/useColorMode";
 
 const moduleNav = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/academy", label: "Academy" },
-  { to: "/marketplace", label: "Marketplace" },
+  { to: "/academy", label: "ICT Academy" },
+  { to: "/marketplace", label: "ICT Marketplace" },
   { to: "/media", label: "Live Media" },
   { to: "/collaboration", label: "Collaborations Hub" },
   { to: "/iot", label: "Innovations Hub" },

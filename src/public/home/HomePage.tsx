@@ -5,10 +5,10 @@ import { getCourses, getPublicMedia, type Course, type PublicMediaItem } from ".
 
 const discovery = [
   { title: "Explore Our Vision", to: "/about", description: "Understand what TUAN is building and how it creates value for communities and businesses." },
-  { title: "Explore Divisions", to: "/divisions", description: "See the full range of services from software and telecom to TUAN Live, TUAN Academy, and TUAN Innovations Hub." },
-  { title: "Academy", to: "/academy", description: "Join live classes, learn from trusted instructors, and replay lessons anytime." },
+  { title: "Explore Divisions", to: "/divisions", description: "See the full range of services from software and telecom to Live Media, ICT Academy, and TUAN Innovations Hub." },
+  { title: "ICT Academy", to: "/academy", description: "Join live classes, learn from trusted instructors, and replay lessons anytime." },
   { title: "Live Media", to: "/media", description: "Follow live programs, partner channels, and recorded shows in one place." },
-  { title: "Marketplace", to: "/marketplace", description: "Choose verified ICT companies and freelancers for your next project." },
+  { title: "ICT Marketplace", to: "/marketplace", description: "Choose verified ICT companies and freelancers for your next project." },
   { title: "Join as Student, Client, Partner, or Investor", to: "/auth", description: "Create your account and access services tailored to your role." },
 ];
 
@@ -46,7 +46,7 @@ export default function HomePage() {
       kind: "course" as const,
       title: course.title,
       subtitle: `${course.level} • ${course.duration}`,
-      description: course.content?.description ?? `Learn with ${course.instructor} through TUAN Academy.`,
+      description: course.content?.description ?? `Learn with ${course.instructor} through ICT Academy.`,
       source: course.content?.thumbnail ?? "/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png",
       badge: `${course.enrolled.toLocaleString()} enrolled`,
     })),
@@ -213,11 +213,11 @@ export default function HomePage() {
               <p className="mt-2 text-sm text-[var(--text-soft)]">Practical digital services for businesses, institutions, and organizations ready to scale.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">Academy</h3>
+              <h3 className="font-display text-xl">ICT Academy</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">Trusted learning paths for students and professionals, with live sessions and replays.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">Marketplace</h3>
+              <h3 className="font-display text-xl">ICT Marketplace</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">A verified space where clients can find reliable freelancers, firms, and digital solutions.</p>
             </div>
             <div>
