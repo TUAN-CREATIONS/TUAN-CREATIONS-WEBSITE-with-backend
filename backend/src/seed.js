@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { config } from "./config.js";
-import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, User, SiteConfig } from "./models.js";
+import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, SupportKnowledge, User, SiteConfig } from "./models.js";
 import { collaborationProjects, courses, dashboardMetrics, innovationPrograms, listings, mediaChannels, recordingSeeds, sessionSeeds, instructorSeeds, forumThreadSeeds, notificationSeeds, sessionSeeds_tier2, quizSeeds, quizResultSeeds, studyGroupSeeds, mentorshipPairingSeeds } from "./data.js";
 
 const seedCollection = async (Model, documents, uniqueField) => {
@@ -29,6 +29,43 @@ export async function seedDatabase() {
   await seedCollection(InnovationProgram, innovationPrograms, "id");
   await seedCollection(LiveSession, sessionSeeds, "courseId");
   await seedCollection(Recording, recordingSeeds);
+  await seedCollection(SupportKnowledge, [
+    {
+      title: "Academy enrollment guidance",
+      type: "text",
+      summary: "Explain how users enroll in a course and unlock live sessions.",
+      contentText: "Users should sign in, open TUAN Academy, pick a course, and enroll before joining live sessions. After enrollment, recordings and study tools are available.",
+      keywords: ["academy", "enroll", "course", "live session", "recording"],
+      order: 1,
+    },
+    {
+      title: "Support contact brochure",
+      type: "pdf",
+      summary: "Main support brochure with response routing and contact paths.",
+      contentText: "Route general support to the WhatsApp contact, direct admin issues to the admin handoff, and prioritize course or service issues based on the topic.",
+      mediaUrl: "/support/support-brochure.pdf",
+      keywords: ["support", "admin", "whatsapp", "contact"],
+      order: 2,
+    },
+    {
+      title: "Partner media snippet",
+      type: "image",
+      summary: "Visual reference for partner offers and campaign messaging.",
+      contentText: "Use this asset when the user asks about partner offers, media coverage, or service promotion across the TUAN platform.",
+      mediaUrl: "/support/partner-asset.png",
+      keywords: ["partner", "media", "campaign", "promotion"],
+      order: 3,
+    },
+    {
+      title: "Admin support walkthrough",
+      type: "video",
+      summary: "Short admin support walkthrough for escalations.",
+      contentText: "If a request needs a human, the bot should prepare a concise summary and reconnect the user to admin support immediately.",
+      mediaUrl: "/support/admin-walkthrough.mp4",
+      keywords: ["handoff", "human", "admin support", "escalate"],
+      order: 4,
+    },
+  ]);
 
   // Seed instructors
   const existingInstructor = await User.findOne({ isInstructor: true }).lean();
@@ -137,19 +174,25 @@ export async function seedDatabase() {
     });
   }
 
-  if (config.adminEmail && config.adminPassword) {
-    const passwordHash = await bcrypt.hash(config.adminPassword, 12);
-    const existingAdmin = await User.findOne({ email: config.adminEmail }).select("+passwordHash");
+  // Ensure there is an admin user. Prefer configured admin credentials,
+  // otherwise fall back to a sensible development default.
+  const defaultAdminEmail = config.adminEmail || "tuancreations.africa@gmail.com";
+  const defaultAdminPassword = config.adminPassword || "AdminPass123!";
+
+  if (defaultAdminEmail && defaultAdminPassword) {
+    const passwordHash = await bcrypt.hash(defaultAdminPassword, 12);
+    const existingAdmin = await User.findOne({}).or([{ email: defaultAdminEmail }, { role: "admin" }]).select("+passwordHash");
 
     if (!existingAdmin) {
       await User.create({
         name: "Platform Admin",
-        email: config.adminEmail,
+        email: defaultAdminEmail,
         role: "admin",
         passwordHash,
       });
     } else {
       existingAdmin.role = "admin";
+      existingAdmin.email = defaultAdminEmail;
       existingAdmin.passwordHash = passwordHash;
       await existingAdmin.save();
     }

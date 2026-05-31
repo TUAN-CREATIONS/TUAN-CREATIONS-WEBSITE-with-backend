@@ -5,12 +5,15 @@ import {
   getAdminActions,
   getAdminOverview,
   getAdminUsers,
+  updateUser,
   type AcademyEnrollment,
   type AdminOverview,
   type AuthUser,
 } from "../../services/api";
 import ManagementTeamAdmin from "./ManagementTeamAdmin";
+import SupportKnowledgeAdmin from "./SupportKnowledgeAdmin";
 import SiteConfigAdmin from "./SiteConfigAdmin";
+import SupportConversationsAdmin from "./SupportConversationsAdmin";
 import { useAuth } from "../../store/auth";
 
 export default function AdminPage() {
@@ -57,6 +60,18 @@ export default function AdminPage() {
       isMounted = false;
     };
   }, [user?.role]);
+
+  const handleEditPhone = async (id: string) => {
+    const current = users.find((u) => u.id === id);
+    const nextPhone = prompt("Enter phone number for " + (current?.name || "admin"), current?.phone || "") || null;
+    if (nextPhone === null) return;
+    const updated = await updateUser(id, { phone: nextPhone });
+    if (updated) {
+      setUsers((s) => s.map((u) => (u.id === id ? updated : u)));
+    } else {
+      alert("Failed to update user");
+    }
+  };
 
   if (!user) {
     return <Navigate to="/admin/login" replace state={{ from: "/admin" }} />;
@@ -161,9 +176,10 @@ export default function AdminPage() {
                     <p className="font-medium text-[var(--text)]">{entry.name}</p>
                     <p className="text-[var(--text-soft)]">{entry.email}</p>
                   </div>
-                  <span className="self-start rounded-full border border-[var(--line)] px-3 py-1 text-xs uppercase tracking-wide text-[var(--text-soft)] sm:self-center">
-                    {entry.role}
-                  </span>
+                   <div className="flex items-center gap-2">
+                     <span className="self-start rounded-full border border-[var(--line)] px-3 py-1 text-xs uppercase tracking-wide text-[var(--text-soft)] sm:self-center">{entry.role}</span>
+                     <button onClick={() => handleEditPhone(entry.id)} className="btn border text-sm">Edit contact</button>
+                   </div>
                 </div>
               ))}
             </div>
@@ -197,6 +213,10 @@ export default function AdminPage() {
           </section>
 
           <SiteConfigAdmin />
+
+          <SupportKnowledgeAdmin />
+
+          <SupportConversationsAdmin />
 
           <ManagementTeamAdmin />
         </>

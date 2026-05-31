@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import PublicLayout from "./layouts/PublicLayout";
 import DashboardLayout from "./layouts/DashboardLayout";
+import SupportChatWidget from "./components/support/SupportChatWidget";
 import FloatingWhatsAppButton from "./components/FloatingWhatsAppButton";
 import AdminRoute from "./routes/AdminRoute";
 import { dashboardRoutes, publicRoutes } from "./routes/appRoutes";
@@ -35,6 +36,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <SupportChatWidget />
       <FloatingWhatsAppButton />
     </>
   );

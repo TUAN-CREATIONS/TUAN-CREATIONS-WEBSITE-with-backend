@@ -138,6 +138,27 @@ export type InnovationProgram = {
   summary: string;
 };
 
+export type SupportKnowledgeItem = {
+  id: string;
+  title: string;
+  type: "text" | "pdf" | "image" | "video";
+  summary: string;
+  contentText: string;
+  mediaUrl?: string | null;
+  keywords: string[];
+  isActive: boolean;
+  order: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SupportAssistResponse = {
+  reply: string;
+  matchedItem: Pick<SupportKnowledgeItem, "id" | "title" | "type" | "summary" | "keywords"> | null;
+  query: string;
+  suggestions: Array<Pick<SupportKnowledgeItem, "id" | "title" | "type" | "summary">>;
+};
+
 export type SessionMeta = {
   courseId: number;
   title: string;
@@ -773,6 +794,132 @@ export async function getAdminAcademyEnrollments() {
     return response.enrollments;
   } catch {
     return [];
+  }
+}
+
+export async function getSupportKnowledge() {
+  try {
+    const response = await apiRequest<{ items: SupportKnowledgeItem[] }>("/support-knowledge");
+    return response.items;
+  } catch {
+    return [];
+  }
+}
+
+export async function getSupportAdmins() {
+  try {
+    const response = await apiRequest<{ contacts: Array<{ name: string; email: string; phone?: string }>; sitePhone?: string; siteWhatsApp?: string }>("/support/admins");
+    return response;
+  } catch {
+    return { contacts: [], sitePhone: null, siteWhatsApp: null };
+  }
+}
+
+export async function createSupportHandoff(payload: { summary: string; messages?: any[]; userName?: string; userEmail?: string; userPhone?: string }) {
+  try {
+    const response = await apiRequest<{ conversationId: string; contacts: Array<{ name: string; email: string; phone?: string }>; sitePhone?: string; siteWhatsApp?: string }>("/support/handoff", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return response;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAdminSupportConversations() {
+  try {
+    const response = await apiRequest<{ conversations: Array<{ id: string; userName: string; userEmail?: string; summary?: string; status: string; assignedAdminId?: string }> }>("/admin/support/conversations");
+    return response.conversations;
+  } catch {
+    return [] as any[];
+  }
+}
+
+export async function getAdminSupportConversation(id: string) {
+  try {
+    const response = await apiRequest<{ conversation: any }>(`/admin/support/conversations/${id}`);
+    return response.conversation;
+  } catch {
+    return null;
+  }
+}
+
+export async function claimSupportConversation(id: string) {
+  try {
+    const response = await apiRequest<{ ok: boolean }>(`/admin/support/conversations/${id}/claim`, { method: "POST" });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function updateUser(id: string, payload: { name?: string; phone?: string }) {
+  try {
+    const response = await apiRequest<{ user: any }>(`/admin/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    return response.user;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAdminSupportKnowledge() {
+  try {
+    const response = await apiRequest<{ items: SupportKnowledgeItem[] }>("/admin/support-knowledge");
+    return response.items;
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSupportKnowledgeItem(item: Partial<SupportKnowledgeItem> & { title: string; type: SupportKnowledgeItem["type"] }) {
+  try {
+    const response = await apiRequest<{ item: SupportKnowledgeItem }>("/admin/support-knowledge", {
+      method: "POST",
+      body: JSON.stringify(item),
+    });
+    return response.item;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteSupportKnowledgeItem(id: string) {
+  try {
+    await apiRequest<{ ok: boolean }>(`/admin/support-knowledge/${id}`, {
+      method: "DELETE",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function askSupportBot(payload: { message: string; attachmentText?: string; attachments?: Array<{ name: string; type: string }> }) {
+  try {
+    return await apiRequest<SupportAssistResponse>("/support/assist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    const fallbackItem = {
+      id: "fallback",
+      title: "General support",
+      type: "text" as const,
+      summary: "Fallback support guidance",
+      keywords: [],
+    };
+
+    return {
+      reply: "I could not reach the support knowledge base. Please use WhatsApp or reconnect to admin support.",
+      matchedItem: fallbackItem,
+      query: payload.message,
+      suggestions: [fallbackItem],
+    };
   }
 }
 

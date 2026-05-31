@@ -9,7 +9,7 @@ export default function FloatingWhatsAppButton() {
   return (
     <a
       className="whatsapp-float"
-      href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`}
+      href={`https://wa.me/${String(whatsappNumber).replace(/[^0-9]/g, "")}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat with us on WhatsApp"

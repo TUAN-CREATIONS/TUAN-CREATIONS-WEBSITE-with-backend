@@ -6,6 +6,7 @@ const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
+    phone: { type: String, default: null },
     role: { type: String, required: true, enum: ["student", "partner", "client", "investor", "admin", "instructor"] },
     passwordHash: { type: String, default: null, select: false },
     isInstructor: { type: Boolean, default: false },
@@ -372,6 +373,43 @@ const siteConfigSchema = new Schema(
   { timestamps: true }
 );
 
+const supportKnowledgeSchema = new Schema(
+  {
+    title: { type: String, required: true },
+    type: { type: String, required: true, enum: ["text", "pdf", "image", "video"] },
+    summary: { type: String, default: "" },
+    contentText: { type: String, default: "" },
+    mediaUrl: { type: String, default: null },
+    keywords: { type: [String], default: [] },
+    isActive: { type: Boolean, default: true },
+    order: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+const supportConversationMessageSchema = new Schema(
+  {
+    sender: { type: String, required: true }, // 'user' | 'bot' | 'admin'
+    senderName: { type: String, default: null },
+    text: { type: String, required: true },
+    time: { type: String, default: () => new Date().toISOString() },
+  },
+  { _id: false }
+);
+
+const supportConversationSchema = new Schema(
+  {
+    userName: { type: String, required: true },
+    userEmail: { type: String, required: false },
+    userPhone: { type: String, required: false },
+    summary: { type: String, required: false },
+    status: { type: String, enum: ["open", "claimed", "closed"], default: "open" },
+    assignedAdminId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    messages: { type: [supportConversationMessageSchema], default: [] },
+  },
+  { timestamps: true }
+);
+
 export const Quiz = mongoose.model("Quiz", quizSchema);
 export const QuizResult = mongoose.model("QuizResult", quizResultSchema);
 export const StudyGroup = mongoose.model("StudyGroup", studyGroupSchema);
@@ -393,3 +431,31 @@ export const Notification = mongoose.model("Notification", notificationSchema);
 export const ForumThread = mongoose.model("ForumThread", forumThreadSchema);
 export const ForumReply = mongoose.model("ForumReply", forumReplySchema);
 export const SiteConfig = mongoose.model("SiteConfig", siteConfigSchema);
+export const SupportKnowledge = mongoose.model("SupportKnowledge", supportKnowledgeSchema);
+export const SupportConversation = mongoose.model("SupportConversation", supportConversationSchema);
+
+const supportIndexSchema = new Schema(
+  {
+    source: { type: String, required: true },
+    key: { type: String, default: null },
+    text: { type: String, required: true },
+    meta: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+
+supportIndexSchema.index({ text: 'text', source: 1, key: 1 });
+
+export const SupportIndex = mongoose.model("SupportIndex", supportIndexSchema);
+
+const supportEmbeddingSchema = new Schema(
+  {
+    docId: { type: Schema.Types.ObjectId, ref: "SupportIndex", required: true, index: true },
+    vector: { type: [Number], required: true },
+    source: { type: String, default: null },
+    meta: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+
+export const SupportEmbedding = mongoose.model("SupportEmbedding", supportEmbeddingSchema);

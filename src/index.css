@@ -904,12 +904,61 @@ header > .mx-auto > div {
   background: #25d366;
   color: #fff;
   text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
   box-shadow: 0 8px 25px rgba(37, 211, 102, 0.4);
   transition: all 0.3s ease;
   animation: pulse 2s infinite;
 }
 
+.support-chat-float {
+  position: fixed;
+  right: 25px;
+  bottom: 96px;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);
+  color: #fff;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  box-shadow: 0 12px 28px rgba(14, 165, 233, 0.28);
+  transition: all 0.3s ease;
+}
+
+.support-chat-float__pulse {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.65);
+  animation: support-pulse 2s infinite;
+}
+
 .whatsapp-float__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: Arial, sans-serif;
+}
+
+.support-chat-float__label {
   display: inline-flex;
   align-items: center;
   min-height: auto;
@@ -930,6 +979,20 @@ header > .mx-auto > div {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.support-chat-float__icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.support-chat-float__icon svg {
+  width: 34px;
+  height: 34px;
 }
 
 .whatsapp-float__icon svg {
@@ -963,7 +1026,20 @@ header > .mx-auto > div {
   transform: translateY(-1px);
 }
 
+.support-chat-float:hover .support-chat-float__icon {
+  transform: scale(1.04);
+}
+
+.support-chat-float:hover .support-chat-float__label {
+  transform: translateY(-1px);
+}
+
 .whatsapp-float:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.95);
+  outline-offset: 3px;
+}
+
+.support-chat-float:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.95);
   outline-offset: 3px;
 }
@@ -977,6 +1053,27 @@ header > .mx-auto > div {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+  }
+}
+
+@keyframes support-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.65);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.85;
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(245, 158, 11, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    opacity: 1;
   }
 }
 
@@ -998,6 +1095,32 @@ header > .mx-auto > div {
   }
 
   .whatsapp-float__icon svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  .support-chat-float {
+    right: 20px;
+    bottom: 88px;
+    padding: 12px;
+    border-radius: 50%;
+  }
+
+  .support-chat-float__pulse {
+    top: 8px;
+    right: 8px;
+  }
+
+  .support-chat-float__label {
+    display: none;
+  }
+
+  .support-chat-float__icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .support-chat-float__icon svg {
     width: 34px;
     height: 34px;
   }

@@ -1,5 +1,6 @@
 import { createServer } from "http";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import express from "express";
 import jwt from "jsonwebtoken";
@@ -11,7 +12,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient as createRedisClient } from "redis";
 import { config } from "./config.js";
 import { sendEmail } from "./shared/mailer.js";
-import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, User, SiteConfig } from "./models.js";
+import { Action, Channel, Certificate, Course, Enrollment, ForumReply, ForumThread, InnovationProgram, Listing, LiveSession, Metric, MentorshipPairing, Notification, Project, Quiz, QuizResult, Recording, Session, StudyGroup, SupportKnowledge, User, SiteConfig, SupportConversation, SupportIndex, SupportEmbedding } from "./models.js";
 import { seedDatabase } from "./seed.js";
 import configRoutes from "./domains/admin/config-routes.js";
 import { createAuth } from "./shared/auth.js";
@@ -24,7 +25,7 @@ const app = express();
 const httpServer = createServer(app);
 const liveRooms = new Map();
 let io;
-const { authenticate, requireAdmin, signToken, serializeUser } = createAuth({ User, jwtSecret: config.jwtSecret });
+const { authenticate, requireAdmin, signToken, serializeUser, resolveActorFromRequest } = createAuth({ User, jwtSecret: config.jwtSecret });
 
 const now = () => new Date().toISOString();
 
@@ -80,6 +81,185 @@ const emitLiveRoomState = (io, courseId) => {
   io.to(getLiveRoomName(courseId)).emit("live:room-state", room.session);
 };
 
+const normalizeSupportText = (value) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const scoreSupportKnowledge = (item, query) => {
+  const haystack = normalizeSupportText([item.title, item.summary, item.contentText, item.type, ...(item.keywords ?? [])].join(" "));
+  if (!haystack || !query) return 0;
+
+  let score = 0;
+  const queryTokens = query.split(" ").filter(Boolean);
+  const uniqueKeywords = [...new Set([...(item.keywords ?? []), item.title, item.summary])].filter(Boolean);
+
+  uniqueKeywords.forEach((keyword) => {
+    const normalizedKeyword = normalizeSupportText(keyword);
+    if (!normalizedKeyword) return;
+    if (query.includes(normalizedKeyword)) {
+      score += normalizedKeyword.length > 12 ? 6 : 4;
+    }
+  });
+
+  queryTokens.forEach((token) => {
+    if (haystack.includes(token)) {
+      score += token.length > 4 ? 2 : 1;
+    }
+  });
+
+  return score;
+};
+
+const formatSupportReply = (item, query) => {
+  const baseText = item.contentText?.trim() || item.summary?.trim() || `I found a support item about ${item.title}.`;
+  const nextStep = item.type === "video"
+    ? "If you need a human review, I can reconnect you to admin support immediately."
+    : "If you want more detail, I can search another support item or reconnect you to admin support.";
+
+  return {
+    reply: `${baseText} ${nextStep}`.trim(),
+    matchedItem: {
+      id: item._id.toString(),
+      title: item.title,
+      type: item.type,
+      summary: item.summary,
+      keywords: item.keywords ?? [],
+    },
+    query,
+  };
+};
+
+const getSupportKnowledgeItems = async () => SupportKnowledge.find({ isActive: true }).sort({ order: 1, createdAt: 1 }).lean();
+
+// Build a simple aggregated support index from SupportKnowledge and SiteConfig.
+// This is used to "train" the support bot by consolidating all authoritative
+// system information into a single collection for easy retrieval or vector
+// embedding by an external embedding/indexing service.
+const buildSupportIndex = async () => {
+  try {
+    console.log('[SupportTrain] Building support index...');
+
+    // Remove existing index entries (simple full rebuild)
+    await SupportIndex.deleteMany({});
+
+    const knowledgeItems = await SupportKnowledge.find({ isActive: true }).lean();
+    const siteConfigs = await SiteConfig.find().lean();
+
+    const docs = [];
+
+    // Add each support knowledge item as a doc
+    for (const item of knowledgeItems) {
+      const textParts = [item.title, item.summary, item.contentText, ...(item.keywords ?? [])].filter(Boolean);
+      docs.push({ source: 'support-knowledge', key: item._id.toString(), text: textParts.join('\n'), meta: { type: item.type, order: item.order } });
+    }
+
+    // Add site config entries
+    for (const cfg of siteConfigs) {
+      docs.push({ source: 'site-config', key: cfg.key, text: `${cfg.key}: ${String(cfg.value)}`, meta: {} });
+    }
+
+    // Try to include frontend navigation routes (if available in workspace)
+    try {
+      const routesFile = path.join(__dirname, '..', '..', 'src', 'routes', 'appRoutes.tsx');
+      if (fs.existsSync(routesFile)) {
+        const content = await fs.promises.readFile(routesFile, 'utf8');
+        const routeMatches = Array.from(content.matchAll(/\{\s*path:\s*"([^"]+)"\s*,\s*element:\s*<([^>\\s]+)\s*/g));
+        for (const m of routeMatches) {
+          const routePath = m[1];
+          const comp = m[2];
+          docs.push({ source: 'navigation', key: routePath, text: `Route: ${routePath} — Component: ${comp}`, meta: { route: routePath, component: comp } });
+        }
+      }
+    } catch (navErr) {
+      console.warn('[SupportTrain] Could not include navigation routes in index:', navErr && navErr.message ? navErr.message : navErr);
+    }
+
+    // Add some high-level aggregates (site description)
+    const siteName = siteConfigs.find((s) => s.key === 'site.name')?.value;
+    const siteDesc = siteConfigs.find((s) => s.key === 'site.description')?.value;
+    if (siteName || siteDesc) {
+      docs.push({ source: 'aggregate', key: 'site_overview', text: `${siteName || ''}\n${siteDesc || ''}`.trim(), meta: {} });
+    }
+
+    if (docs.length > 0) {
+      await SupportIndex.insertMany(docs);
+    }
+
+    console.log('[SupportTrain] Support index built with', docs.length, 'documents');
+    await Action.create({ kind: 'support.train', payload: { count: docs.length } });
+    return { ok: true, count: docs.length };
+  } catch (err) {
+    console.error('[SupportTrain] Failed to build index:', err && err.message ? err.message : err);
+    return { ok: false, error: String(err) };
+  }
+};
+
+// Embedding utilities
+const OPENAI_EMBED_MODEL = process.env.OPENAI_EMBED_MODEL || "text-embedding-3-small";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+
+const embedText = async (texts) => {
+  if (!OPENAI_API_KEY) return null;
+
+  try {
+    const input = Array.isArray(texts) ? texts : [texts];
+    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: OPENAI_EMBED_MODEL, input }),
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Embedding request failed: ${resp.status} ${txt}`);
+    }
+
+    const data = await resp.json();
+    return data.data.map((d) => d.embedding);
+  } catch (err) {
+    console.error('[SupportEmbeddings] embedText error:', err && err.message ? err.message : err);
+    return null;
+  }
+};
+
+const cosine = (a, b) => {
+  if (!a || !b || a.length !== b.length) return -1;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return -1;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+};
+
+const findClosestByEmbedding = async (query, topK = 4) => {
+  if (!OPENAI_API_KEY) return null;
+  const qvecs = await embedText(query);
+  if (!qvecs || qvecs.length === 0) return null;
+  const qvec = qvecs[0];
+
+  const embeddings = await SupportEmbedding.find().lean();
+  const scored = embeddings
+    .map((e) => ({ id: e.docId, score: cosine(qvec, e.vector), meta: e.meta }))
+    .sort((l, r) => r.score - l.score)
+    .slice(0, topK);
+
+  const docs = [];
+  for (const s of scored) {
+    const doc = await SupportIndex.findById(s.id).lean();
+    if (doc) docs.push({ id: doc._id.toString(), title: doc.key || doc.source, text: doc.text, meta: doc.meta, score: s.score });
+  }
+
+  return docs;
+};
+
 app.use(
   cors({
     origin: config.clientOrigin,
@@ -101,6 +281,76 @@ app.get("*", (req, res, next) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "tuan-creations-backend" });
+});
+
+// Admin-only endpoint to (re)train the support index on demand
+app.post('/api/support/train', authenticate, requireAdmin, async (_req, res) => {
+  const result = await buildSupportIndex();
+  if (!result.ok) return res.status(500).json({ message: 'Training failed', error: result.error });
+  return res.json({ ok: true, count: result.count });
+});
+
+// Admin endpoint: generate embeddings for all support index docs
+app.post('/api/support/embeddings/train', authenticate, requireAdmin, async (_req, res) => {
+  if (!OPENAI_API_KEY) return res.status(400).json({ message: 'OPENAI_API_KEY not configured' });
+
+  const docs = await SupportIndex.find().lean();
+  if (!docs || docs.length === 0) return res.json({ ok: true, count: 0 });
+
+  const texts = docs.map((d) => d.text || '');
+  const embeddings = await embedText(texts);
+  if (!embeddings) return res.status(500).json({ message: 'Embedding generation failed' });
+
+  // Replace embeddings collection
+  await SupportEmbedding.deleteMany({});
+  const inserts = docs.map((d, i) => ({ docId: d._id, vector: embeddings[i], source: d.source, meta: d.meta || {} }));
+  await SupportEmbedding.insertMany(inserts);
+
+  await Action.create({ kind: 'support.embeddings.train', payload: { count: inserts.length } });
+  return res.json({ ok: true, count: inserts.length });
+});
+
+app.get('/api/support/search', async (req, res) => {
+  const q = String(req.query.q || '');
+  if (!q) return res.status(400).json({ message: 'q query param required' });
+
+  // Try embedding search
+  if (OPENAI_API_KEY) {
+    const docs = (await findClosestByEmbedding(q, 6)) ?? [];
+    return res.json({ ok: true, items: docs });
+  }
+
+  // Fallback to simple text search on SupportIndex
+  const matches = await SupportIndex.find({ $text: { $search: q } }).limit(6).lean().catch(() => []);
+  return res.json({ ok: true, items: matches.map((d) => ({ id: d._id.toString(), title: d.key || d.source, text: d.text, meta: d.meta })) });
+});
+
+app.get('/api/support/train/status', async (_req, res) => {
+  const count = await SupportIndex.countDocuments();
+  return res.json({ ok: true, count });
+});
+
+// Dev helper: update admin email on the running server (disabled in production)
+app.post('/__dev/update-admin-email', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ message: 'Not found' });
+  const { email } = req.body ?? {};
+  if (!email) return res.status(400).json({ message: 'email is required' });
+
+  try {
+    let admin = await User.findOne({ role: 'admin' });
+    if (!admin) admin = await User.findOne({});
+    if (!admin) return res.status(404).json({ message: 'No user found to update' });
+
+    admin.email = String(email).trim().toLowerCase();
+    await admin.save();
+
+    await Action.create({ kind: 'dev.admin.email.update', payload: { id: admin._id.toString(), email: admin.email } });
+
+    return res.json({ ok: true, id: admin._id.toString(), email: admin.email });
+  } catch (err) {
+    console.error('[Dev] Failed to update admin email', err && err.message ? err.message : err);
+    return res.status(500).json({ message: 'Update failed' });
+  }
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -240,6 +490,24 @@ app.get("/api/admin/academy/enrollments", authenticate, requireAdmin, async (_re
 app.get("/api/admin/users", authenticate, requireAdmin, async (_req, res) => {
   const users = await User.find().sort({ createdAt: -1 }).lean();
   return res.json({ users: users.map(serializeUser) });
+});
+
+app.put("/api/admin/users/:id", authenticate, requireAdmin, async (req, res) => {
+  const id = req.params.id;
+  const payload = req.body ?? {};
+
+  const allowed = {};
+  if (typeof payload.name === "string") allowed.name = payload.name.trim();
+  if (typeof payload.phone === "string") allowed.phone = payload.phone.trim();
+
+  try {
+    const user = await User.findByIdAndUpdate(id, allowed, { new: true }).lean();
+    if (!user) return res.status(404).json({ message: "User not found" });
+    await Action.create({ kind: "admin.user.update", payload: { id, changes: allowed }, actorEmail: req.user.email, actorName: req.user.name });
+    return res.json({ user: serializeUser(user) });
+  } catch (err) {
+    return res.status(500).json({ message: "Update failed" });
+  }
 });
 
 app.get("/api/admin/actions", authenticate, requireAdmin, async (_req, res) => {
@@ -1150,17 +1418,7 @@ app.post("/api/actions", async (req, res) => {
     return res.status(400).json({ message: "kind is required" });
   }
 
-  const actor = req.headers.authorization?.startsWith("Bearer ")
-    ? await (async () => {
-        try {
-          const token = req.headers.authorization.slice(7);
-          const decoded = jwt.verify(token, config.jwtSecret);
-          return decoded?.sub ? await User.findById(decoded.sub).lean() : null;
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  const actor = await resolveActorFromRequest(req);
 
   const action = await Action.create({
     kind: String(kind),
@@ -1170,6 +1428,224 @@ app.post("/api/actions", async (req, res) => {
   });
 
   return res.status(201).json({ action });
+});
+
+app.get("/api/support-knowledge", async (_req, res) => {
+  const items = await getSupportKnowledgeItems();
+  return res.json({ items });
+});
+
+app.post("/api/support/assist", async (req, res) => {
+  const { message = "", attachmentText = "", attachments = [] } = req.body ?? {};
+  const queryText = [message, attachmentText].filter(Boolean).join(" ");
+
+  // Prefer embedding-based retrieval if embeddings are available and API key configured.
+  let response;
+  if (OPENAI_API_KEY) {
+    const docs = (await findClosestByEmbedding(queryText, 4)) ?? [];
+    if (docs.length > 0) {
+      const matched = docs[0];
+      const suggestions = docs.slice(0, 3).map((d) => ({ id: d.id, title: d.title, type: d.meta?.type ?? "text", summary: d.text?.slice(0, 200) }));
+      response = {
+        reply: `${matched.text?.slice(0, 800) || 'I found related information. Please review below.'}`,
+        matchedItem: { id: matched.id, title: matched.title, type: matched.meta?.type ?? "text", summary: matched.text?.slice(0, 200), keywords: [] },
+        query: normalizeSupportText(queryText),
+        suggestions,
+      };
+    }
+  }
+
+  // Fallback to keyword scoring when embeddings not available or retrieval empty
+  if (!response) {
+    const items = await getSupportKnowledgeItems();
+    const query = normalizeSupportText(queryText);
+
+    const scoredItems = items
+      .map((item) => ({ item, score: scoreSupportKnowledge(item, query) }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score);
+
+    const matchedItem = scoredItems[0]?.item ?? items[0] ?? null;
+    const suggestions = scoredItems.slice(0, 3).map(({ item }) => ({ id: item._id.toString(), title: item.title, type: item.type, summary: item.summary }));
+
+    response = matchedItem
+      ? formatSupportReply(matchedItem, query)
+      : {
+          reply: "I could not find an exact match yet. Please choose a quick reply or reconnect to admin support.",
+          matchedItem: null,
+          query,
+        };
+    response = { ...response, suggestions };
+  }
+
+  await Action.create({
+    kind: "support.assist",
+    payload: { message, attachmentText, attachments, matchedItem: response.matchedItem?.id ?? null },
+  });
+
+  return res.json({
+    ...response,
+    suggestions,
+  });
+});
+
+// Return admin contact info (emails, phone, whatsapp) for the support handoff UI
+app.get("/api/support/admins", async (_req, res) => {
+  const admins = await User.find({ role: "admin" }).lean();
+  const configKeys = await SiteConfig.find({ key: { $in: ["contact.phone", "social.whatsapp"] } }).lean();
+  const configMap = new Map(configKeys.map((c) => [c.key, c.value]));
+
+  const contacts = admins.map((a) => ({ name: a.name, email: a.email, phone: a.phone ?? null }));
+
+  return res.json({
+    contacts,
+    sitePhone: configMap.get("contact.phone") ?? null,
+    siteWhatsApp: configMap.get("social.whatsapp") ?? null,
+  });
+});
+
+// Create a support conversation (handoff) and persist messages for admin review
+app.post("/api/support/handoff", async (req, res) => {
+  const { summary = "", messages = [], userName = "Guest", userEmail = null, userPhone = null } = req.body ?? {};
+
+  const convoMessages = (messages || []).map((m) => ({ sender: m.role || m.sender || "user", senderName: m.name || null, text: m.text || String(m), time: m.time || new Date().toISOString() }));
+
+  const conversation = await SupportConversation.create({
+    userName,
+    userEmail,
+    userPhone,
+    summary,
+    messages: convoMessages,
+  });
+
+  await Action.create({
+    kind: "support.handoff",
+    payload: { conversationId: conversation._id.toString(), summary },
+  });
+
+  // return conversation id and admin contacts for UI
+  const admins = await User.find({ role: "admin" }).lean();
+  const configKeys = await SiteConfig.find({ key: { $in: ["contact.phone", "social.whatsapp"] } }).lean();
+  const configMap = new Map(configKeys.map((c) => [c.key, c.value]));
+
+  const contacts = admins.map((a) => ({ name: a.name, email: a.email, phone: a.phone ?? null }));
+
+  return res.json({ conversationId: conversation._id.toString(), contacts, sitePhone: configMap.get("contact.phone") ?? null, siteWhatsApp: configMap.get("social.whatsapp") ?? null });
+});
+
+// Admin endpoints: list and view conversations, and claim
+app.get("/api/admin/support/conversations", authenticate, requireAdmin, async (_req, res) => {
+  const conversations = await SupportConversation.find().sort({ createdAt: -1 }).limit(50).lean();
+  return res.json({ conversations: conversations.map((c) => ({ id: c._id.toString(), userName: c.userName, userEmail: c.userEmail, summary: c.summary, status: c.status, assignedAdminId: c.assignedAdminId })) });
+});
+
+app.get("/api/admin/support/conversations/:id", authenticate, requireAdmin, async (req, res) => {
+  const conversation = await SupportConversation.findById(req.params.id).lean();
+  if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+  return res.json({ conversation });
+});
+
+app.post("/api/admin/support/conversations/:id/claim", authenticate, requireAdmin, async (req, res) => {
+  const conversation = await SupportConversation.findById(req.params.id);
+  if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+
+  conversation.status = "claimed";
+  conversation.assignedAdminId = req.user._id;
+  conversation.messages.push({ sender: "admin", senderName: req.user.name, text: `Claimed by ${req.user.name}`, time: new Date().toISOString() });
+  await conversation.save();
+
+  await Action.create({ kind: "support.claim", payload: { conversationId: conversation._id.toString(), admin: req.user.email }, actorEmail: req.user.email, actorName: req.user.name });
+
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/support-knowledge", authenticate, requireAdmin, async (_req, res) => {
+  const items = await SupportKnowledge.find().sort({ order: 1, createdAt: 1 }).lean();
+  return res.json({ items });
+});
+
+app.post("/api/admin/support-knowledge", authenticate, requireAdmin, async (req, res) => {
+  const { id, title, type, summary = "", contentText = "", mediaUrl = null, keywords = [], isActive = true, order = 0 } = req.body ?? {};
+
+  if (!title || !type) {
+    return res.status(400).json({ message: "title and type are required" });
+  }
+
+  const normalizedKeywords = Array.isArray(keywords)
+    ? keywords.map((keyword) => String(keyword).trim()).filter(Boolean)
+    : String(keywords || "")
+        .split(/[,\n]/)
+        .map((keyword) => keyword.trim())
+        .filter(Boolean);
+
+  const payload = {
+    title: String(title).trim(),
+    type,
+    summary: String(summary).trim(),
+    contentText: String(contentText).trim(),
+    mediaUrl: mediaUrl ? String(mediaUrl).trim() : null,
+    keywords: normalizedKeywords,
+    isActive: Boolean(isActive),
+    order: Number(order) || 0,
+  };
+
+  const item = id
+    ? await SupportKnowledge.findByIdAndUpdate(id, payload, { new: true, upsert: false })
+    : await SupportKnowledge.create(payload);
+
+  if (!item) {
+    return res.status(404).json({ message: "Support knowledge item not found" });
+  }
+
+  return res.status(id ? 200 : 201).json({ item });
+  // Trigger async retrain of support index and embeddings after edits
+  (async () => {
+    try {
+      await buildSupportIndex();
+      if (OPENAI_API_KEY) {
+        const docs = await SupportIndex.find().lean();
+        const texts = docs.map((d) => d.text || '');
+        const embs = await embedText(texts);
+        if (embs) {
+          await SupportEmbedding.deleteMany({});
+          const inserts = docs.map((d, i) => ({ docId: d._id, vector: embs[i], source: d.source, meta: d.meta || {} }));
+          await SupportEmbedding.insertMany(inserts);
+          await Action.create({ kind: 'support.embeddings.autotrain', payload: { count: inserts.length } });
+        }
+      }
+    } catch (err) {
+      console.error('[SupportTrain] Post-edit retrain failed:', err && err.message ? err.message : err);
+    }
+  })();
+});
+
+app.delete("/api/admin/support-knowledge/:id", authenticate, requireAdmin, async (req, res) => {
+  const deleted = await SupportKnowledge.findByIdAndDelete(req.params.id);
+  if (!deleted) {
+    return res.status(404).json({ message: "Support knowledge item not found" });
+  }
+
+  // Trigger async retrain after deletion
+  (async () => {
+    try {
+      await buildSupportIndex();
+      if (OPENAI_API_KEY) {
+        const docs = await SupportIndex.find().lean();
+        const texts = docs.map((d) => d.text || '');
+        const embs = await embedText(texts);
+        if (embs) {
+          await SupportEmbedding.deleteMany({});
+          const inserts = docs.map((d, i) => ({ docId: d._id, vector: embs[i], source: d.source, meta: d.meta || {} }));
+          await SupportEmbedding.insertMany(inserts);
+          await Action.create({ kind: 'support.embeddings.autotrain', payload: { count: inserts.length } });
+        }
+      }
+    } catch (err) {
+      console.error('[SupportTrain] Post-delete retrain failed:', err && err.message ? err.message : err);
+    }
+  })();
+
+  return res.json({ ok: true });
 });
 
 // ============ TIER 3: QUIZZES ============
@@ -1565,6 +2041,22 @@ async function start() {
   }
 
   await seedDatabase();
+
+  // Initial training run to build the support index
+  try {
+    await buildSupportIndex();
+  } catch (err) {
+    console.error('[SupportTrain] Initial build failed:', err && err.message ? err.message : err);
+  }
+
+  // Periodic retrain in development by default (can be disabled with AUTO_TRAIN=false)
+  if (process.env.AUTO_TRAIN !== 'false') {
+    const intervalMs = Number(process.env.AUTO_TRAIN_INTERVAL_MS || 1000 * 60 * 10); // default 10 minutes
+    setInterval(() => {
+      void buildSupportIndex();
+    }, intervalMs);
+    console.log('[SupportTrain] Scheduled periodic training every', intervalMs, 'ms');
+  }
 
   io = new SocketIOServer(httpServer, {
     cors: {
