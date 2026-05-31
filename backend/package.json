@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test:integration": "node tests/run-tests.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^7.1.0",
@@ -15,6 +16,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb-memory-server": "^11.2.0",
     "mongoose": "^8.11.0",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.4",
     "redis": "^4.6.7",
     "socket.io": "^4.8.1",

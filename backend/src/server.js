@@ -372,6 +372,30 @@ app.post('/__dev/update-admin-email', async (req, res) => {
   }
 });
 
+// Dev helper: set admin password on the running server (disabled in production)
+app.post('/__dev/set-admin-password', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ message: 'Not found' });
+  const { email, password } = req.body ?? {};
+  if (!password) return res.status(400).json({ message: 'password is required' });
+
+  try {
+    let admin = null;
+    if (email) admin = await User.findOne({ email: String(email).trim().toLowerCase() });
+    if (!admin) admin = await User.findOne({ role: 'admin' }) || await User.findOne({});
+    if (!admin) return res.status(404).json({ message: 'No user found to update' });
+
+    admin.passwordHash = await bcrypt.hash(String(password), 12);
+    await admin.save();
+
+    await Action.create({ kind: 'dev.admin.password.update', payload: { id: admin._id.toString() } });
+
+    return res.json({ ok: true, id: admin._id.toString(), email: admin.email });
+  } catch (err) {
+    console.error('[Dev] Failed to set admin password', err && err.message ? err.message : err);
+    return res.status(500).json({ message: 'Update failed' });
+  }
+});
+
 app.post("/api/auth/login", async (req, res) => {
   const { name, email, role, password } = req.body ?? {};
 
