@@ -6,11 +6,11 @@ import useColorMode from "../hooks/useColorMode";
 
 const moduleNav = [
   { to: "/dashboard", label: "Dashboard" },
-  { to: "/academy", label: "TUAN Academy" },
-  { to: "/marketplace", label: "TUAN Marketplace" },
-  { to: "/media", label: "TUAN Live" },
-  { to: "/collaboration", label: "TUAN Hub" },
-  { to: "/iot", label: "TUAN Innovations" },
+  { to: "/academy", label: "Academy" },
+  { to: "/marketplace", label: "Marketplace" },
+  { to: "/media", label: "Live" },
+  { to: "/collaboration", label: "Hub" },
+  { to: "/iot", label: "Innovations" },
 ];
 
 export default function DashboardLayout() {

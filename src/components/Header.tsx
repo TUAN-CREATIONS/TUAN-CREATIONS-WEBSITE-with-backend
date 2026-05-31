@@ -11,11 +11,11 @@ const navigation = [
   { name: "Divisions", href: "/divisions", icon: Globe },
   { name: "Blog", href: "/blog", icon: BookOpen },
   { name: "Contact", href: "/contact", icon: Mail },
-  { name: "TUAN Academy", href: "/academy", icon: BookOpen },
-  { name: "TUAN Marketplace", href: "/marketplace", icon: ShoppingBag },
-  { name: "TUAN Live", href: "/media", icon: Tv },
-  { name: "TUAN Innovations Hub", href: "/iot", icon: Lightbulb },
-  { name: "TUAN Hub", href: "/collaboration", icon: Handshake },
+  { name: "Academy", href: "/academy", icon: BookOpen },
+  { name: "Marketplace", href: "/marketplace", icon: ShoppingBag },
+  { name: "Live", href: "/media", icon: Tv },
+  { name: "Innovations Hub", href: "/iot", icon: Lightbulb },
+  { name: "Hub", href: "/collaboration", icon: Handshake },
 ];
 
 const Header = memo(() => {
