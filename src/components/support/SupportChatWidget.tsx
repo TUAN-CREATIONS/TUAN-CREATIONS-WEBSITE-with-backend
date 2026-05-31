@@ -389,7 +389,8 @@ export default function SupportChatWidget() {
         <div
           ref={panelRef}
           tabIndex={-1}
-          className="w-[min(92vw,26rem)] max-h-[70vh] flex flex-col overflow-hidden rounded-[1.75rem] border border-white/15 bg-[rgba(9,16,28,0.96)] text-white shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+          className="w-[min(92vw,26rem)] max-h-[70vh] flex flex-col overflow-auto rounded-[1.75rem] border border-white/15 bg-[rgba(9,16,28,0.96)] text-white shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+          style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-gradient-to-r from-emerald-500/20 via-teal-500/10 to-transparent px-4 py-4">
             <div>
@@ -457,7 +458,7 @@ export default function SupportChatWidget() {
             </button>
           </div>
 
-          <div ref={messagesRef} style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          <div ref={messagesRef} style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 space-y-3 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-white/30">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
