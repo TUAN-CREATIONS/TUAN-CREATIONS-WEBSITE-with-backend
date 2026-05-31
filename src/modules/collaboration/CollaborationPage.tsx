@@ -46,7 +46,7 @@ export default function CollaborationPage() {
   return (
     <div className="space-y-6">
       <div className="card">
-        <h2 className="font-display text-2xl">TUAN Hub</h2>
+        <h2 className="font-display text-2xl">Collaborations Hub</h2>
         <p className="mt-2 text-sm text-[var(--text-soft)]">
           Start projects, invite teams, and keep communication and delivery in one shared workspace.
         </p>

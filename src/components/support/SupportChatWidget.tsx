@@ -449,7 +449,7 @@ export default function SupportChatWidget() {
                 <Sparkles size={12} />
                 Live support
               </div>
-              <h2 className="mt-3 font-display text-lg text-white">You're welcome to TUAN Live Support!</h2>
+              <h2 className="mt-3 font-display text-lg text-white">You're welcome to Live Media Support!</h2>
               <p className="mt-1 text-sm text-slate-300">{isKnowledgeLoading ? "Loading admin knowledge..." : "How can we help you today?"}</p>
 
               <div className="mt-3 flex items-center gap-2">
@@ -548,7 +548,7 @@ export default function SupportChatWidget() {
                 <div className="flex flex-col gap-2">
                   {handoffContacts.map((c, idx) => (
                     <div key={idx} className="flex items-center justify-between gap-2 rounded border border-white/10 bg-white/5 px-3 py-2">
-                      <div className="text-sm">{c.name ?? (c.siteWhatsApp ? 'TUAN WhatsApp' : 'Main contact')}</div>
+                      <div className="text-sm">{c.name ?? (c.siteWhatsApp ? 'WhatsApp' : 'Main contact')}</div>
                       <div className="flex gap-2">
                         {c.phone && (
                           <a href={`tel:${String(c.phone).replace(/[^0-9+]/g, '')}`} className="btn border text-sm">Call</a>
@@ -557,10 +557,10 @@ export default function SupportChatWidget() {
                           <a href={`https://wa.me/${String(c.phone).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${c.name || 'admin'}, please continue this request.`)}`} target="_blank" rel="noreferrer" className="btn text-sm">WhatsApp</a>
                         )}
                         {c.email && (
-                          <a href={`mailto:${c.email}?subject=${encodeURIComponent('TUAN support request')}`} className="btn border text-sm">Email</a>
+                          <a href={`mailto:${c.email}?subject=${encodeURIComponent('Support request')}`} className="btn border text-sm">Email</a>
                         )}
                         {c.siteWhatsApp && !c.phone && (
-                          <a href={`https://wa.me/${c.siteWhatsApp}?text=${encodeURIComponent('Hello TUAN admin support, please continue this request.')}`} target="_blank" rel="noreferrer" className="btn text-sm">WhatsApp</a>
+                          <a href={`https://wa.me/${c.siteWhatsApp}?text=${encodeURIComponent('Hello admin support, please continue this request.')}`} target="_blank" rel="noreferrer" className="btn text-sm">WhatsApp</a>
                         )}
                       </div>
                     </div>

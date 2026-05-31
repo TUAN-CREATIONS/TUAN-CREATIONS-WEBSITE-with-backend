@@ -6,9 +6,9 @@ import { getCourses, getPublicMedia, type Course, type PublicMediaItem } from ".
 const discovery = [
   { title: "Explore Our Vision", to: "/about", description: "Understand what TUAN is building and how it creates value for communities and businesses." },
   { title: "Explore Divisions", to: "/divisions", description: "See the full range of services from software and telecom to TUAN Live, TUAN Academy, and TUAN Innovations Hub." },
-  { title: "TUAN Academy", to: "/academy", description: "Join live classes, learn from trusted instructors, and replay lessons anytime." },
-  { title: "TUAN Live", to: "/media", description: "Follow live programs, partner channels, and recorded shows in one place." },
-  { title: "TUAN Marketplace", to: "/marketplace", description: "Choose verified ICT companies and freelancers for your next project." },
+  { title: "Academy", to: "/academy", description: "Join live classes, learn from trusted instructors, and replay lessons anytime." },
+  { title: "Live Media", to: "/media", description: "Follow live programs, partner channels, and recorded shows in one place." },
+  { title: "Marketplace", to: "/marketplace", description: "Choose verified ICT companies and freelancers for your next project." },
   { title: "Join as Student, Client, Partner, or Investor", to: "/auth", description: "Create your account and access services tailored to your role." },
 ];
 
@@ -63,7 +63,7 @@ export default function HomePage() {
     {
       id: "feature-academy",
       kind: "feature" as const,
-      title: "TUAN Academy",
+      title: "Academy",
       subtitle: "Live learning and replays",
       description: "Trusted learning paths for students and professionals across the platform.",
       source: "/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png",
@@ -72,7 +72,7 @@ export default function HomePage() {
     {
       id: "feature-marketplace",
       kind: "feature" as const,
-      title: "TUAN Marketplace",
+      title: "Marketplace",
       subtitle: "Verified providers",
       description: "A verified space where clients can find reliable freelancers, firms, and digital solutions.",
       source: "/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png",
@@ -81,7 +81,7 @@ export default function HomePage() {
     {
       id: "feature-media",
       kind: "feature" as const,
-      title: "TUAN Live",
+      title: "Live Media",
       subtitle: "Broadcast and replay",
       description: "Media that educates, promotes partner work, and keeps communities informed.",
       source: "/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png",
@@ -213,23 +213,23 @@ export default function HomePage() {
               <p className="mt-2 text-sm text-[var(--text-soft)]">Practical digital services for businesses, institutions, and organizations ready to scale.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">TUAN Academy</h3>
+              <h3 className="font-display text-xl">Academy</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">Trusted learning paths for students and professionals, with live sessions and replays.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">TUAN Marketplace</h3>
+              <h3 className="font-display text-xl">Marketplace</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">A verified space where clients can find reliable freelancers, firms, and digital solutions.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">TUAN Hub</h3>
+              <h3 className="font-display text-xl">Collaborations Hub</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">Simple teamwork tools for project updates, communication, and shared delivery.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">TUAN Live</h3>
+              <h3 className="font-display text-xl">Live Media</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">Media that educates, promotes partner work, and keeps communities informed.</p>
             </div>
             <div>
-              <h3 className="font-display text-xl">TUAN Innovations Hub</h3>
+              <h3 className="font-display text-xl">Innovations Hub</h3>
               <p className="mt-2 text-sm text-[var(--text-soft)]">Hands-on innovation tracks in IoT, robotics, and chip design for future-ready builders.</p>
             </div>
           </div>

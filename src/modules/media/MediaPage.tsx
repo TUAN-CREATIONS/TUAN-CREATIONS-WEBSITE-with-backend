@@ -30,12 +30,12 @@ export default function MediaPage() {
   return (
     <div className="space-y-6">
       <div className="card">
-        <h2 className="font-display text-2xl">TUAN Live</h2>
+        <h2 className="font-display text-2xl">Live Media</h2>
         <p className="mt-2 text-sm text-[var(--text-soft)]">
           Watch live shows, replay episodes, and follow channels that matter to your goals.
         </p>
         <p className="mt-3 text-sm text-[var(--text-soft)]">
-          TUAN Live supports student learning, partner visibility, client education, and investor insight.
+          Live Media supports student learning, partner visibility, client education, and investor insight.
         </p>
         {message && <p className="mt-3 text-sm text-emerald-300">{message}</p>}
       </div>

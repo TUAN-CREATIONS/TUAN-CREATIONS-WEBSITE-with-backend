@@ -17,9 +17,9 @@ export const supportTopics: SupportTopic[] = [
   },
   {
     id: "live",
-    label: "Live sessions",
+    label: "Live Media",
     keywords: ["live", "session", "recording", "forum", "study group"],
-    response: "Live sessions are available after enrollment. You can also open course recordings and discussion tools from the Academy area.",
+    response: "Live Media sessions are available after enrollment. You can also open course recordings and discussion tools from the Academy area.",
     followUp: "Ask me for the course you need and I will point you to the right place.",
     action: { type: "navigate", to: "/academy/live-sessions" },
   },
@@ -172,10 +172,10 @@ supportTopics.push(
   },
   {
     id: "collaboration",
-    label: "TUAN Hub",
+    label: "Collaborations Hub",
     keywords: ["collaboration", "team", "project", "workspace"],
-    response: "TUAN Hub helps teams work together on projects. Use the TUAN Hub area to create projects and invite teammates.",
-    followUp: "Do you want help creating a new TUAN Hub project?",
+    response: "Collaborations Hub helps teams work together on projects. Use the Collaborations Hub area to create projects and invite teammates.",
+    followUp: "Do you want help creating a new Collaborations Hub project?",
     action: { type: "navigate", to: "/collaboration" },
   },
   {

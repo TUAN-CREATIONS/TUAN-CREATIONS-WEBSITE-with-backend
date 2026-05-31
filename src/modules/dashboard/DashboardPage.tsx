@@ -48,7 +48,7 @@ export default function DashboardPage() {
         <h2 className="mt-2 font-display text-2xl">{user?.name}</h2>
         <p className="mt-2 text-sm text-[var(--text-soft)]">Your path: {roleTips[user?.role ?? "student"]}</p>
         <p className="mt-3 text-sm text-[var(--text-soft)]">
-          This dashboard helps you move smoothly across TUAN Academy, TUAN Marketplace, TUAN Live, TUAN Hub, and TUAN Innovations Hub.
+          This dashboard helps you move smoothly across Academy, Marketplace, Live Media, Collaborations Hub, and Innovations Hub.
         </p>
       </div>
 

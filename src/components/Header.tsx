@@ -15,7 +15,7 @@ const navigation = [
   { name: "Marketplace", href: "/marketplace", icon: ShoppingBag },
   { name: "Live", href: "/media", icon: Tv },
   { name: "Innovations Hub", href: "/iot", icon: Lightbulb },
-  { name: "Hub", href: "/collaboration", icon: Handshake },
+  { name: "Collaborations Hub", href: "/collaboration", icon: Handshake },
 ];
 
 const Header = memo(() => {
