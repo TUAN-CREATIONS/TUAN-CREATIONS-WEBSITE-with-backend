@@ -266,8 +266,6 @@ export default function SupportChatWidget() {
       // focus search input after render
         setTimeout(() => {
           searchInputRef.current?.focus?.();
-          // trigger search to show previous questions
-          void doSearch("");
         }, 50);
       return;
     }
@@ -425,6 +423,14 @@ export default function SupportChatWidget() {
                   className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-3 py-2 text-sm font-medium text-slate-950"
                 >
                   {isSearching ? "Searching..." : "Search"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => doSearch("")}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-sm font-medium text-white/90"
+                  title="Show recent questions"
+                >
+                  Recent
                 </button>
               </div>
 

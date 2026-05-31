@@ -38,7 +38,7 @@ export const supportTopics: SupportTopic[] = [
 ];
 
 export const defaultWelcomeMessage =
-  "Welcome to TUAN support — we're here to help. Ask me anything about courses, live sessions, marketplace listings, or account issues. If I can't resolve it, I'll connect you to our team right away.";
+  "You are welcome to TUAN live support,";
 
 export const quickReplyPresets = [
   "I need help enrolling in a course",
