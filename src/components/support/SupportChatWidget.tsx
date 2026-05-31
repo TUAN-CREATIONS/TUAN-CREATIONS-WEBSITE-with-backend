@@ -59,6 +59,7 @@ export default function SupportChatWidget() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const supportDigits = DEFAULT_WA_NUMBER;
   const supportWaHref = `https://wa.me/${supportDigits}?text=${encodeURIComponent("Hello TUAN admin support, I need assistance from live support.")}`;
@@ -258,6 +259,15 @@ export default function SupportChatWidget() {
   };
 
   const handleQuickReply = (reply: string) => {
+    // If user clicked the search quick-reply, open/focus the search input instead
+    if (reply && reply.toLowerCase().includes("search previously")) {
+      setSearchQuery("");
+      setSearchResults([]);
+      // focus search input after render
+      setTimeout(() => searchInputRef.current?.focus?.(), 50);
+      return;
+    }
+
     void submitMessage(reply, attachments);
   };
 
@@ -392,8 +402,15 @@ export default function SupportChatWidget() {
 
               <div className="mt-3 flex items-center gap-2">
                 <input
+                  ref={searchInputRef}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void doSearch(searchQuery);
+                    }
+                  }}
                   placeholder="Search previously asked questions..."
                   className="flex-1 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-400"
                 />
