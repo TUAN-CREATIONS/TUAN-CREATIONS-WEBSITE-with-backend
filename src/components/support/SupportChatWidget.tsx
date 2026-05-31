@@ -73,6 +73,21 @@ export default function SupportChatWidget() {
   }, [knowledgeItems]);
 
   const doSearch = async (q: string) => {
+    // Allow an explicit empty query to fetch recent items from the server
+    if (q === "") {
+      setIsSearching(true);
+      try {
+        const items = await (await import("../../services/api")).searchSupport("");
+        setSearchResults(items ?? []);
+      } catch (err) {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+      return;
+    }
+
+    // For short queries (<2 chars) don't search
     if (!q || q.trim().length < 2) {
       setSearchResults([]);
       return;
