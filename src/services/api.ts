@@ -1328,7 +1328,7 @@ export async function getSiteConfig(): Promise<SiteConfig> {
       "site.tagline": "Africa Inspired!",
       "site.description": "Building the United African Nation in Technology through practical learning, trusted services, and innovation.",
       "contact.email": "tuancreations.africa@gmail.com",
-      "contact.phone": "+256 753 414 058",
+      "contact.phone": "+256 753 414 058 / +256786691998",
       "contact.location": "Kampala, Uganda",
       "contact.region": "Pan-African Operations",
       "social.whatsapp": "+256753414058",

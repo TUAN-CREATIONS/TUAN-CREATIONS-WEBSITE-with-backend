@@ -4,7 +4,7 @@ const WHATSAPP_MESSAGE = "Hello, TUAN Creations. I need your assistance:";
 
 export default function FloatingWhatsAppButton() {
   const [config] = useSiteConfig();
-  const whatsappNumber = config["social.whatsapp"] || "256753414058";
+  const whatsappNumber = config["social.whatsapp"] || "+256753414058";
 
   return (
     <a

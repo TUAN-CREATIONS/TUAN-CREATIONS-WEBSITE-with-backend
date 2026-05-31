@@ -802,6 +802,7 @@ header .logo-container img.logo {
 }
 
 /* Use the logo image as a mask to paint a white shape matching its opaque area */
+/* Use the logo image as a mask to paint a white shape matching its opaque area */
 header .logo-container {
   position: relative;
   --logo-size: 100px;
@@ -815,16 +816,9 @@ header .logo-container::before {
   top: 50%;
   transform: translate(-50%, -50%);
   width: 100px;
-  height: 100px;
+  height: 55px;
   background: #fff;
-  -webkit-mask-image: url('/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png');
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center center;
-  -webkit-mask-size: 100px 100px;
-  mask-image: url('/TUAN_CREATIONS_LOGO-removebg-preview%20(3).png');
-  mask-repeat: no-repeat;
-  mask-position: center center;
-  mask-size: 100px 100px;
+  border-radius: 999px; /* make oval */
   pointer-events: none;
 }
 
