@@ -2000,7 +2000,8 @@ app.get("/api/admin/academy/analytics", authenticate, async (req, res) => {
 });
 
 // ============ SITE CONFIGURATION ============
-app.use("/api/admin/config", configRoutes);
+// Mount admin config routes behind authentication and admin check
+app.use("/api/admin/config", authenticate, requireAdmin, configRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
