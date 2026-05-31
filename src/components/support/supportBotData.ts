@@ -38,14 +38,34 @@ export const supportTopics: SupportTopic[] = [
 ];
 
 export const defaultWelcomeMessage =
-  "Hello, I am TUAN live support. Pick a quick reply below or type your question, and I will guide you to the right place.";
+  "Welcome to TUAN support — we're here to help. Ask me anything about courses, live sessions, marketplace listings, or account issues. If I can't resolve it, I'll connect you to our team right away.";
 
 export const quickReplyPresets = [
-  "I need help with a course",
-  "How do live sessions work?",
-  "Show me the marketplace",
+  "I need help enrolling in a course",
+  "How do live sessions and replays work?",
+  "Find marketplace services",
+  "Report a problem with my account",
   "Reconnect me to admin support",
+  "Search previously asked questions",
 ];
+
+// Add more built-in topics/triggers
+supportTopics.push(
+  {
+    id: "account",
+    label: "Account & billing",
+    keywords: ["account", "billing", "payment", "invoice", "subscription", "profile"],
+    response: "Manage your account from the dashboard. For billing, we accept multiple payment methods — check the billing section in your profile.",
+    followUp: "Would you like me to open your account settings or connect you to billing support?",
+  },
+  {
+    id: "access",
+    label: "Access issues",
+    keywords: ["login", "sign in", "can't sign", "forgot", "access", "password"],
+    response: "If you're having trouble signing in, try resetting your password from the sign-in page. If that doesn't work, I can escalate to admin support.",
+    followUp: "Would you like a password reset link sent to your email or help contacting support?",
+  }
+);
 
 export function normalizeSupportText(text: string) {
   return text.trim().toLowerCase();

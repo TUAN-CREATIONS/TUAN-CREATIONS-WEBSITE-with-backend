@@ -806,6 +806,15 @@ export async function getSupportKnowledge() {
   }
 }
 
+export async function searchSupport(query: string) {
+  try {
+    const response = await apiRequest<{ items: Array<{ id: string; title: string; text: string; meta?: any }> }>(`/support/search?q=${encodeURIComponent(query)}`);
+    return response.items;
+  } catch {
+    return [] as any[];
+  }
+}
+
 export async function getSupportAdmins() {
   try {
     const response = await apiRequest<{ contacts: Array<{ name: string; email: string; phone?: string }>; sitePhone?: string; siteWhatsApp?: string }>("/support/admins");

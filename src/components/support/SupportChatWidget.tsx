@@ -56,6 +56,9 @@ export default function SupportChatWidget() {
   const [knowledgeItems, setKnowledgeItems] = useState<SupportKnowledgeItem[]>([]);
   const [isKnowledgeLoading, setIsKnowledgeLoading] = useState(true);
   const [handoffContacts, setHandoffContacts] = useState<any[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   const supportDigits = DEFAULT_WA_NUMBER;
   const supportWaHref = `https://wa.me/${supportDigits}?text=${encodeURIComponent("Hello TUAN admin support, I need assistance from live support.")}`;
@@ -67,6 +70,23 @@ export default function SupportChatWidget() {
 
     return knowledgeItems.slice(0, 4).map((item) => item.title);
   }, [knowledgeItems]);
+
+  const doSearch = async (q: string) => {
+    if (!q || q.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const items = await (await import("../../services/api")).searchSupport(q);
+      setSearchResults(items ?? []);
+    } catch (err) {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -117,6 +137,26 @@ export default function SupportChatWidget() {
 
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [isOpen]);
+
+  // When the panel opens, focus the input and make the panel active for keyboard scrolling
+  useEffect(() => {
+    if (isOpen) {
+      // allow small timeout for panel to render
+      setTimeout(() => {
+        inputRef.current?.focus?.();
+        panelRef.current?.focus?.();
+        // scroll messages into view
+        const el = messagesRef.current;
+        if (el) {
+          try {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+          } catch {
+            el.scrollTop = el.scrollHeight;
+          }
+        }
+      }, 50);
+    }
   }, [isOpen]);
 
   // Keep messages scrolled to bottom when new messages arrive or when typing
@@ -338,6 +378,7 @@ export default function SupportChatWidget() {
       {isOpen && (
         <div
           ref={panelRef}
+          tabIndex={-1}
           className="w-[min(92vw,26rem)] max-h-[70vh] flex flex-col overflow-hidden rounded-[1.75rem] border border-white/15 bg-[rgba(9,16,28,0.96)] text-white shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl"
         >
           <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-gradient-to-r from-emerald-500/20 via-teal-500/10 to-transparent px-4 py-4">
@@ -347,9 +388,46 @@ export default function SupportChatWidget() {
                 Live support
               </div>
               <h2 className="mt-3 font-display text-lg text-white">TUAN live support</h2>
-              <p className="mt-1 text-sm text-slate-300">
-                {isKnowledgeLoading ? "Loading admin knowledge..." : `Ready with ${knowledgeItems.length || quickReplyPresets.length} quick replies and instant file reading.`}
-              </p>
+              <p className="mt-1 text-sm text-slate-300">{isKnowledgeLoading ? "Loading admin knowledge..." : "How can we help you today?"}</p>
+
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search previously asked questions..."
+                  className="flex-1 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => doSearch(searchQuery)}
+                  className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-3 py-2 text-sm font-medium text-slate-950"
+                >
+                  {isSearching ? "Searching..." : "Search"}
+                </button>
+              </div>
+
+              {searchResults && (
+                <div style={{ WebkitOverflowScrolling: 'touch' }} className="mt-3 max-h-36 overflow-y-auto space-y-2">
+                  {searchResults.length === 0 ? (
+                    <div className="text-xs text-slate-400">No results found.</div>
+                  ) : (
+                    searchResults.map((r, idx) => (
+                      <button
+                        key={r.id ?? idx}
+                        type="button"
+                        onClick={() => {
+                          appendBotMessage(r.text || r.title || "");
+                          setSearchResults(null);
+                        }}
+                        className="w-full text-left rounded border border-white/8 bg-white/5 px-3 py-2 text-sm text-slate-200 hover:bg-white/8"
+                      >
+                        <div className="font-medium">{r.title || r.key || r.source}</div>
+                        <div className="text-xs text-slate-400 truncate">{(r.text || "").slice(0, 200)}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             <button
@@ -362,7 +440,7 @@ export default function SupportChatWidget() {
             </button>
           </div>
 
-          <div ref={messagesRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          <div ref={messagesRef} style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
