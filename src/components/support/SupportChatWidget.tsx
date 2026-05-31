@@ -449,7 +449,7 @@ export default function SupportChatWidget() {
                 <Sparkles size={12} />
                 Live support
               </div>
-              <h2 className="mt-3 font-display text-lg text-white">TUAN live support</h2>
+              <h2 className="mt-3 font-display text-lg text-white">You're welcome to TUAN Live Support!</h2>
               <p className="mt-1 text-sm text-slate-300">{isKnowledgeLoading ? "Loading admin knowledge..." : "How can we help you today?"}</p>
 
               <div className="mt-3 flex items-center gap-2">
