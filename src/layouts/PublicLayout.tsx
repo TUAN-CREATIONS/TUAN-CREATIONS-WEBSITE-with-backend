@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { ChevronDown, Menu, X, Mail, Phone, MapPin, Moon, Sun } from "lucide-react";
 import BackButton from "../components/BackButton";
@@ -21,11 +21,27 @@ export default function PublicLayout() {
     setMobileMenuOpen(false);
   };
 
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "auto";
+
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, [mobileMenuOpen]);
+
+  const mobileCardClass = (active: boolean) =>
+    `block rounded-xl border border-white/10 px-4 py-3 text-sm transition ${
+      active ? "bg-[#f0c86a] text-[#071022]" : "bg-[#0b1830] text-[#e6eef8] hover:bg-[#112544]"
+    }`;
+
   return (
     <div className="min-h-screen bg-[var(--surface)] text-[var(--text)]">
       <div className="hero-glow" aria-hidden />
 
-      <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--header-bg)] backdrop-blur-md">
+      <header
+        className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--header-bg)] backdrop-blur-md"
+        style={mobileMenuOpen ? { zIndex: 10001 } : undefined}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
             <BackButton fallbackTo="/" label="Back" className="shrink-0" />
@@ -130,51 +146,36 @@ export default function PublicLayout() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t border-[var(--line)] px-4 py-3 sm:px-6 lg:hidden">
+          <div className="absolute left-0 right-0 top-full z-[10002] border-t border-white/10 bg-[#071022] px-4 py-3 text-[#e6eef8] shadow-2xl lg:hidden sm:px-6">
+            <div className="flex justify-end pb-2">
+              <button
+                type="button"
+                onClick={closeMobileMenu}
+                aria-label="Close menu"
+                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-[#0b1830] p-2 text-[#f0c86a]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
             <nav className="flex flex-col gap-2">
               {publicNav.map((item) =>
                 item.to === "/about" ? (
-                  <div key={item.to} className="rounded-2xl border border-[var(--line)] p-2">
+                  <div key={item.to} className="rounded-2xl border border-white/10 bg-[#0b1830] p-2 shadow-lg">
                     <button
                       type="button"
                       onClick={() => setAboutMenuOpen((prev) => !prev)}
-                      className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-sm transition ${
-                        location.pathname.startsWith("/about")
-                          ? "bg-[var(--gold)] text-[var(--ink)]"
-                          : "text-[var(--text-soft)] hover:bg-[var(--card)] hover:text-[var(--text)]"
-                      }`}
+                      className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-[#e6eef8]"
                     >
                       <span>About</span>
                       <ChevronDown size={14} />
                     </button>
                     {aboutMenuOpen && (
-                      <div className="mt-2 flex flex-col gap-2 pl-2">
-                        <NavLink
-                          key="about-us-mobile"
-                          to="/about"
-                          onClick={closeMobileMenu}
-                          className={({ isActive }) =>
-                            `rounded-full px-3 py-2 text-sm transition ${
-                              isActive
-                                ? "bg-[var(--gold)] text-[var(--ink)]"
-                                : "text-[var(--text-soft)] hover:bg-[var(--card)] hover:text-[var(--text)]"
-                            }`
-                          }
-                        >
+                      <div className="mt-2 flex flex-col gap-2 p-1">
+                        <NavLink key="about-us-mobile" to="/about" onClick={closeMobileMenu} className={({ isActive }) => mobileCardClass(isActive)}>
                           About Us
                         </NavLink>
-                        <NavLink
-                          key="management-team-mobile"
-                          to="/about/management-team"
-                          onClick={closeMobileMenu}
-                          className={({ isActive }) =>
-                            `rounded-full px-3 py-2 text-sm transition ${
-                              isActive
-                                ? "bg-[var(--gold)] text-[var(--ink)]"
-                                : "text-[var(--text-soft)] hover:bg-[var(--card)] hover:text-[var(--text)]"
-                            }`
-                          }
-                        >
+                        <NavLink key="management-team-mobile" to="/about/management-team" onClick={closeMobileMenu} className={({ isActive }) => mobileCardClass(isActive)}>
                           Management Team
                         </NavLink>
                       </div>
@@ -185,19 +186,13 @@ export default function PublicLayout() {
                     key={item.to}
                     to={item.to}
                     onClick={closeMobileMenu}
-                    className={({ isActive }) =>
-                      `rounded-full px-3 py-2 text-sm transition ${
-                        isActive
-                          ? "bg-[var(--gold)] text-[var(--ink)]"
-                          : "text-[var(--text-soft)] hover:bg-[var(--card)] hover:text-[var(--text)]"
-                      }`
-                    }
+                    className={({ isActive }) => mobileCardClass(isActive)}
                   >
                     {item.label}
                   </NavLink>
                 ),
               )}
-              <Link className="btn-primary mt-1 text-center text-sm" to="/dashboard" onClick={closeMobileMenu}>
+              <Link className="mt-2 block rounded-2xl bg-[#f0c86a] px-4 py-3 text-center text-sm font-semibold text-[#071022] shadow-lg" to="/dashboard" onClick={closeMobileMenu}>
                 Explore TUAN Digital Platform
               </Link>
             </nav>

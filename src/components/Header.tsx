@@ -38,8 +38,10 @@ const Header = memo(() => {
 
   useEffect(() => {
     document.body.style.overflow = isMenuOpen ? "hidden" : "auto";
+    document.body.classList.toggle("mobile-menu-open", isMenuOpen);
     return () => {
       document.body.style.overflow = "auto";
+      document.body.classList.remove("mobile-menu-open");
     };
   }, [isMenuOpen]);
 
@@ -247,11 +249,37 @@ const Header = memo(() => {
         </div>
 
         {isMenuOpen && (
-          <div className="animate-slideDown pb-4 md:hidden mobile-menu">
-            <nav className="flex flex-col gap-2">
-              <NavLinks onClick={closeMenu} />
-            </nav>
-          </div>
+          <>
+            <div
+              className="animate-slideDown pb-4 md:hidden mobile-menu z-[9999]"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 9999,
+                width: "100vw",
+                height: "100vh",
+                overflowY: "auto",
+                padding: "120px 1rem 1rem",
+                backgroundColor: "#071022",
+                color: "#e6eef8",
+                opacity: 1,
+              }}
+            >
+              <div className="absolute left-0 right-0 top-0 flex items-center justify-end p-3">
+                <button
+                  type="button"
+                  onClick={closeMenu}
+                  aria-label="Close menu"
+                  className="rounded-md p-2 bg-white/0 hover:bg-yellow-400/10 dark:bg-transparent"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              <nav className="flex flex-col gap-2 pt-2">
+                <NavLinks onClick={closeMenu} />
+              </nav>
+            </div>
+          </>
         )}
       </div>
     </header>
